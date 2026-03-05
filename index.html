@@ -48,6 +48,7 @@
   select:disabled { opacity: 0.4; cursor: not-allowed; }
   textarea { resize: vertical; min-height: 60px; font-size: 0.82rem; }
   input::placeholder, textarea::placeholder { color: var(--text-muted); font-style: italic; }
+  input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cursor: pointer; }
   .checks { display: grid; grid-template-columns: 1fr 1fr; gap: 0.35rem; }
   @media (max-width: 540px) { .checks { grid-template-columns: 1fr; } }
   .check-item { display: flex; align-items: center; gap: 0.45rem; padding: 0.45rem 0.65rem; border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer; transition: all 0.12s; user-select: none; }
@@ -205,6 +206,15 @@ function handleAddNew(sel,type){
   document.getElementById('addInput_'+type).focus();
 }
 
+async function syncToConfig(configType, value, item){
+  if(!SCRIPT_URL) return;
+  const payload={action:'add_config', config_type:configType, value:value};
+  if(item) payload.item=item;
+  try{
+    await fetch(SCRIPT_URL,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(payload)});
+  }catch(e){showToast('err','Sync Warning','Added locally but failed to sync to Google Sheet.');}
+}
+
 function confirmAdd(type){
   const input=document.getElementById('addInput_'+type);
   const val=input.value.trim();
@@ -216,6 +226,7 @@ function confirmAdd(type){
     const addOpt=sel.querySelector('option[value="__add_new__"]');
     sel.insertBefore(new Option(val,val),addOpt);
     sel.value=val;
+    syncToConfig('employee',val);
   } else if(type==='item'){
     const custom=getCustom('items'); if(!custom.includes(val)){custom.push(val); saveCustom('items',custom);}
     const sel=document.getElementById('item');
@@ -223,6 +234,7 @@ function confirmAdd(type){
     sel.insertBefore(new Option(val,val),addOpt);
     sel.value=val;
     onItemChange();
+    syncToConfig('item',val);
   } else if(type==='operation'){
     const currentItem=document.getElementById('item').value;
     if(!currentItem){showToast('err','No Item','Select an item first.');return;}
@@ -233,6 +245,7 @@ function confirmAdd(type){
     sel.insertBefore(new Option(val,val),addOpt);
     sel.value=val;
     updatePreview();
+    syncToConfig('operation',val,currentItem);
   }
   input.value='';
   document.getElementById('addRow_'+type).style.display='none';
