@@ -129,7 +129,7 @@
         <div class="field"><label>Qty with Issues <span class="req">*</span></label><input type="number" id="quantity" min="1" placeholder="25"></div>
       </div>
       <div class="preview" id="preview">
-        <div class="prev-row"><span class="prev-label">Task Time</span><span class="prev-val" id="pTime"></span></div>
+        <div class="prev-row"><span class="prev-label">Total Time</span><span class="prev-val" id="pTime"></span></div>
         <div class="prev-row"><span class="prev-label">Time/Part</span><span class="prev-val" id="pPart"></span></div>
       </div>
     </div>
@@ -163,7 +163,7 @@ async function init(){
   if(SCRIPT_URL){document.getElementById('scriptUrl').value=SCRIPT_URL; await loadConfig();}
   const lastOp=localStorage.getItem('prodlog_operator'); if(lastOp) document.getElementById('name').value=lastOp;
   const hSel=document.getElementById('time_hours'), mSel=document.getElementById('time_minutes');
-  for(let h=0;h<=23;h++){const o=document.createElement('option'); o.value=h; o.textContent=String(h).padStart(2,'0')+' hr'; hSel.appendChild(o);}
+  for(let h=0;h<=12;h++){const o=document.createElement('option'); o.value=h; o.textContent=String(h).padStart(2,'0')+' hr'; hSel.appendChild(o);}
   for(let m=0;m<=55;m+=5){const o=document.createElement('option'); o.value=m; o.textContent=String(m).padStart(2,'0')+' min'; mSel.appendChild(o);}
   ['time_hours','time_minutes','quantity','operation'].forEach(id=>{
     const el=document.getElementById(id); el.addEventListener('input',updatePreview); el.addEventListener('change',updatePreview);
