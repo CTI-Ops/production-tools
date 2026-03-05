@@ -94,17 +94,12 @@
     <div id="dashItemsBars"></div>
   </div>
 
-  <div class="dash-detail" id="dashOperators" style="display:none;">
-    <div class="section-head"><span class="section-num">03</span><span class="section-label">Entries by Operator</span></div>
-    <div id="dashOperatorBars"></div>
-  </div>
-
   <div class="dash-detail" id="dashRecent" style="display:none;">
-    <div class="section-head"><span class="section-num">04</span><span class="section-label">Recent Entries</span></div>
+    <div class="section-head"><span class="section-num">03</span><span class="section-label">Recent Entries</span></div>
     <div style="padding:0.5rem;">
       <div class="log-table-wrap">
         <table class="log-table">
-          <thead><tr><th>#</th><th>Operator</th><th>Item</th><th>Op</th><th>Time</th><th>Qty</th><th>Issues</th></tr></thead>
+          <thead><tr><th>#</th><th>Item</th><th>Op</th><th>Time</th><th>Qty</th><th>Issues</th></tr></thead>
           <tbody id="recentBody"></tbody>
         </table>
       </div>
@@ -145,7 +140,6 @@ function renderDashboard(d){
   const entriesWithIssues=d.entries_with_issues||0;
   const issueCounts=d.issues_breakdown||{};
   const itemCounts=d.items_breakdown||{};
-  const operatorCounts=d.operators_breakdown||{};
   const recentEntries=d.recent_entries||[];
   const period=d.period||'today';
 
@@ -178,16 +172,13 @@ function renderDashboard(d){
   // Items breakdown
   renderBars('dashItems','dashItemsBars',itemCounts,'accent');
 
-  // Operators breakdown
-  renderBars('dashOperators','dashOperatorBars',operatorCounts,'green');
-
   // Recent entries table
   if(recentEntries.length){
     document.getElementById('dashRecent').style.display='block';
     const tbody=document.getElementById('recentBody');
     tbody.innerHTML=recentEntries.map((e,i)=>{
       const issues=(e.issues||'None').replace(/;/g,', ');
-      return '<tr><td>'+(i+1)+'</td><td>'+esc(e.name||'')+'</td><td>'+esc(e.item||'')+'</td><td style="font-size:0.68rem">'+esc(e.operation||'')+'</td><td>'+(e.task_time_min||'?')+'m</td><td>'+(e.quantity||'')+'</td><td style="font-size:0.68rem">'+esc(issues)+'</td></tr>';
+      return '<tr><td>'+(i+1)+'</td><td>'+esc(e.item||'')+'</td><td style="font-size:0.68rem">'+esc(e.operation||'')+'</td><td>'+(e.task_time_min||'?')+'m</td><td>'+(e.quantity||'')+'</td><td style="font-size:0.68rem">'+esc(issues)+'</td></tr>';
     }).join('');
   } else { document.getElementById('dashRecent').style.display='none'; }
 }
