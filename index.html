@@ -89,9 +89,9 @@
   <div class="header-meta" id="clock"></div>
 </header>
 <main>
-  <div class="config-banner visible" id="configBanner">
+  <div class="config-banner" id="configBanner">
     <h3>Setup Required</h3>
-    <p>Paste your Google Apps Script Web App URL below.</p>
+    <p>Paste your Google Apps Script Web App URL below to override the default.</p>
     <input type="text" id="scriptUrl" placeholder="https://script.google.com/macros/s/your-id-here/exec" value="">
     <button onclick="saveUrl()">Save &amp; Connect</button>
   </div>
@@ -138,7 +138,8 @@
 <div class="toast" id="toast"><button class="toast-x" onclick="hideToast()">&times;</button><div class="toast-title" id="toastTitle"></div><div class="toast-body" id="toastBody"></div></div>
 
 <script>
-let CONFIG=null, SCRIPT_URL=localStorage.getItem('prodlog_script_url')||'', sessionEntries=[], toastTimer=null;
+const DEFAULT_SCRIPT_URL='https://script.google.com/macros/s/AKfycbx1VgLudvC77GFCHQ8M-WOSV-2It8JG0AHmHJfqnLeQsb4pQNetg13QQPPouAFA3GKdfQ/exec';
+let CONFIG=null, SCRIPT_URL=localStorage.getItem('prodlog_script_url')||DEFAULT_SCRIPT_URL, sessionEntries=[], toastTimer=null;
 
 async function init(){
   updateClock(); setInterval(updateClock,1000);
