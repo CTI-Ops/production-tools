@@ -271,12 +271,12 @@ document.addEventListener('keyup', e => {
   if (currentGame && currentGame.onKey) currentGame.onKey(e.key, false);
 });
 
-// Middle mouse close
+// Middle mouse → back to production log
 document.getElementById('arcade-overlay').addEventListener('mousedown', e => {
-  if (e.button === 1) { e.preventDefault(); closeArcade(); }
+  if (e.button === 1) { e.preventDefault(); window.location.href = 'index.html'; }
 });
 document.getElementById('arcade-overlay').addEventListener('auxclick', e => {
-  if (e.button === 1) { e.preventDefault(); closeArcade(); }
+  if (e.button === 1) { e.preventDefault(); window.location.href = 'index.html'; }
 });
 
 // Mouse tracking for games
@@ -754,7 +754,7 @@ class MissileCommand {
 
 // ── Navigation back to production log ──
 document.addEventListener('keydown', function(e) {
-  if (e.code === 'Space' && !e.repeat) { e.preventDefault(); window.location.href = 'index.html'; }
+  if (e.code === 'Space' && !e.repeat && !currentGame) { e.preventDefault(); window.location.href = 'index.html'; }
 });
 document.addEventListener('mousedown', function(e) {
   if (e.button === 1) { e.preventDefault(); window.location.href = 'index.html'; }
