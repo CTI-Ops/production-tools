@@ -30,7 +30,6 @@
 
   /* KPI Cards */
   .dash { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.6rem; margin-bottom: 0.75rem; }
-  .dash.c4 { grid-template-columns: repeat(4, 1fr); }
   .kpi { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 0.8rem 1rem; display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
   .kpi-val { font-family: 'JetBrains Mono', monospace; font-size: 1.4rem; font-weight: 700; letter-spacing: -0.03em; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .kpi-label { font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
@@ -79,7 +78,6 @@
 
   @media (max-width: 540px) {
     .dash { grid-template-columns: 1fr; }
-    .dash.c4 { grid-template-columns: 1fr 1fr; }
     header { padding: 0.9rem 1rem; }
     main { padding: 1rem 0.6rem 4rem; }
     .dash-bar-label { width: 90px; }
@@ -97,11 +95,10 @@
   <div class="dash-status" id="dashStatus">Loading...</div>
 
   <!-- KPI Row 1: Top Offender, Time Lost, Repeat Issues -->
-  <div class="dash c4" id="dashKpis" style="display:none;">
+  <div class="dash" id="dashKpis" style="display:none;">
     <div class="kpi red"><div class="kpi-val" id="kpiTopOffender">&mdash;</div><div class="kpi-label">Top Offender</div><div class="kpi-sub" id="kpiTopOffenderSub">&mdash;</div></div>
     <div class="kpi accent"><div class="kpi-val" id="kpiTimeLost">&mdash;</div><div class="kpi-label">Time Lost</div><div class="kpi-sub" id="kpiTimeLostSub">&mdash;</div></div>
-    <div class="kpi green"><div class="kpi-val" id="kpiTotalTime">&mdash;</div><div class="kpi-label">Total Time</div><div class="kpi-sub" id="kpiTotalTimeSub">&mdash;</div></div>
-    <div class="kpi"><div class="kpi-val" id="kpiRepeat">&mdash;</div><div class="kpi-label">Repeat Issues</div><div class="kpi-sub" id="kpiRepeatSub">&mdash;</div></div>
+    <div class="kpi green"><div class="kpi-val" id="kpiRepeat">&mdash;</div><div class="kpi-label">Repeat Issues</div><div class="kpi-sub" id="kpiRepeatSub">&mdash;</div></div>
   </div>
 
   <!-- KPI Row 2: Entries, Total Parts, Avg Time/Part -->
@@ -189,6 +186,7 @@ function renderDashboard(d){
   const totalParts=d.total_parts||0;
   const totalTime=d.total_time_min||0;
   const issueCounts=d.issues_breakdown||{};
+  const issueTimeCounts=d.issue_time_breakdown||{};
   const itemCounts=d.items_breakdown||{};
   const itemTimeCounts=d.item_time_breakdown||{};
   const topOffender=d.top_offender||{};
@@ -209,11 +207,6 @@ function renderDashboard(d){
   document.getElementById('kpiTimeLost').textContent=hrs;
   document.getElementById('kpiTimeLostSub').textContent=n>0?(totalTime/n).toFixed(0)+' min avg/entry':'no data';
 
-  // Total Time
-  document.getElementById('kpiTotalTime').textContent=totalTime+'m';
-  var avgTpp=totalParts>0?(totalTime/totalParts):0;
-  document.getElementById('kpiTotalTimeSub').textContent=totalParts>0?avgTpp.toFixed(2)+' min/part':'\u2014';
-
   // Repeat Issues (combos with 2+ occurrences)
   var repeatCount=recurringCombos.length;
   document.getElementById('kpiRepeat').textContent=repeatCount;
@@ -231,7 +224,7 @@ function renderDashboard(d){
   document.getElementById('kpiAvgTimeSub').textContent=totalParts>0?(totalTime+'m across '+totalParts+' parts'):'\u2014';
 
   // === Chart 1: Issues by Quantity ===
-  renderBars('dashIssues','dashIssuesBars',issueCounts,'red');
+  renderItemBars('dashIssues','dashIssuesBars',issueCounts,issueTimeCounts,'red');
 
   // === Chart 2: Parts by Item (with time annotation) ===
   renderItemBars('dashItems','dashItemsBars',itemCounts,itemTimeCounts);
@@ -266,7 +259,8 @@ function renderBars(panelId,barsId,counts,colorClass){
   } else { panel.style.display='none'; }
 }
 
-function renderItemBars(panelId,barsId,counts,timeCounts){
+function renderItemBars(panelId,barsId,counts,timeCounts,colorClass){
+  colorClass=colorClass||'accent';
   var keys=Object.keys(counts).sort(function(a,b){return counts[b]-counts[a];});
   var panel=document.getElementById(panelId);
   var container=document.getElementById(barsId);
@@ -275,7 +269,7 @@ function renderItemBars(panelId,barsId,counts,timeCounts){
     var max=counts[keys[0]]||1;
     container.innerHTML=keys.map(function(k){
       var timeStr=timeCounts[k]?(timeCounts[k]+'m'):'';
-      return '<div class="dash-bar-row"><span class="dash-bar-label" title="'+esc(k)+'">'+esc(k)+'</span><div class="dash-bar-track"><div class="dash-bar-fill accent" style="width:'+Math.round((counts[k]/max)*100)+'%"></div></div><span class="dash-bar-val">'+counts[k]+(timeStr?' <span style="color:var(--text-muted);font-size:0.6rem">'+timeStr+'</span>':'')+'</span></div>';
+      return '<div class="dash-bar-row"><span class="dash-bar-label" title="'+esc(k)+'">'+esc(k)+'</span><div class="dash-bar-track"><div class="dash-bar-fill '+colorClass+'" style="width:'+Math.round((counts[k]/max)*100)+'%"></div></div><span class="dash-bar-val">'+counts[k]+(timeStr?' <span style="color:var(--text-muted);font-size:0.6rem">'+timeStr+'</span>':'')+'</span></div>';
     }).join('');
   } else { panel.style.display='none'; }
 }

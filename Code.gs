@@ -166,6 +166,7 @@ function getDashboardData() {
   let totalEntries = 0, totalParts = 0, totalTime = 0, entriesWithIssues = 0;
   const issuesBreakdown = {}, itemsBreakdown = {};
   const itemTimeBreakdown = {};   // item -> total minutes
+  const issueTimeBreakdown = {};  // issue -> total minutes
   const comboCount = {};          // "Item | Issue" -> { count, totalTime, qty }
   const weeklyTrend = {};         // "YYYY-Www" -> { count, totalTime }
   const recentRows = [];
@@ -184,7 +185,10 @@ function getDashboardData() {
     const hasRealIssue = issues.some(s => s !== 'None');
     if (hasRealIssue) entriesWithIssues++;
     issues.forEach(function(iss) {
-      if (iss && iss !== 'None') issuesBreakdown[iss] = (issuesBreakdown[iss] || 0) + qty;
+      if (iss && iss !== 'None') {
+        issuesBreakdown[iss] = (issuesBreakdown[iss] || 0) + qty;
+        issueTimeBreakdown[iss] = (issueTimeBreakdown[iss] || 0) + taskTime;
+      }
     });
 
     // Items
@@ -267,6 +271,7 @@ function getDashboardData() {
     total_time_min: totalTime,
     entries_with_issues: entriesWithIssues,
     issues_breakdown: issuesBreakdown,
+    issue_time_breakdown: issueTimeBreakdown,
     items_breakdown: itemsBreakdown,
     item_time_breakdown: itemTimeBreakdown,
     top_offender: { item: topOffenderItem, count: topOffenderCount },
