@@ -752,9 +752,13 @@ class MissileCommand {
   }
 }
 
-// ── Auto-open for testing ──
-// Remove this line when embedding:
-// openArcade();
+// ── Navigation back to production log ──
+document.addEventListener('keydown', function(e) {
+  if (e.code === 'Space' && !e.repeat) { e.preventDefault(); window.location.href = 'index.html'; }
+});
+document.addEventListener('mousedown', function(e) {
+  if (e.button === 1) { e.preventDefault(); window.location.href = 'index.html'; }
+});
 </script>
 </body>
 </html>
