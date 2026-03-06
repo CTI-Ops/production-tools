@@ -186,6 +186,7 @@ function renderDashboard(d){
   const totalParts=d.total_parts||0;
   const totalTime=d.total_time_min||0;
   const issueCounts=d.issues_breakdown||{};
+  const issueTimeCounts=d.issue_time_breakdown||{};
   const itemCounts=d.items_breakdown||{};
   const itemTimeCounts=d.item_time_breakdown||{};
   const topOffender=d.top_offender||{};
@@ -223,7 +224,7 @@ function renderDashboard(d){
   document.getElementById('kpiAvgTimeSub').textContent=totalParts>0?(totalTime+'m across '+totalParts+' parts'):'\u2014';
 
   // === Chart 1: Issues by Quantity ===
-  renderBars('dashIssues','dashIssuesBars',issueCounts,'red');
+  renderItemBars('dashIssues','dashIssuesBars',issueCounts,issueTimeCounts,'red');
 
   // === Chart 2: Parts by Item (with time annotation) ===
   renderItemBars('dashItems','dashItemsBars',itemCounts,itemTimeCounts);
@@ -258,7 +259,8 @@ function renderBars(panelId,barsId,counts,colorClass){
   } else { panel.style.display='none'; }
 }
 
-function renderItemBars(panelId,barsId,counts,timeCounts){
+function renderItemBars(panelId,barsId,counts,timeCounts,colorClass){
+  colorClass=colorClass||'accent';
   var keys=Object.keys(counts).sort(function(a,b){return counts[b]-counts[a];});
   var panel=document.getElementById(panelId);
   var container=document.getElementById(barsId);
@@ -267,7 +269,7 @@ function renderItemBars(panelId,barsId,counts,timeCounts){
     var max=counts[keys[0]]||1;
     container.innerHTML=keys.map(function(k){
       var timeStr=timeCounts[k]?(timeCounts[k]+'m'):'';
-      return '<div class="dash-bar-row"><span class="dash-bar-label" title="'+esc(k)+'">'+esc(k)+'</span><div class="dash-bar-track"><div class="dash-bar-fill accent" style="width:'+Math.round((counts[k]/max)*100)+'%"></div></div><span class="dash-bar-val">'+counts[k]+(timeStr?' <span style="color:var(--text-muted);font-size:0.6rem">'+timeStr+'</span>':'')+'</span></div>';
+      return '<div class="dash-bar-row"><span class="dash-bar-label" title="'+esc(k)+'">'+esc(k)+'</span><div class="dash-bar-track"><div class="dash-bar-fill '+colorClass+'" style="width:'+Math.round((counts[k]/max)*100)+'%"></div></div><span class="dash-bar-val">'+counts[k]+(timeStr?' <span style="color:var(--text-muted);font-size:0.6rem">'+timeStr+'</span>':'')+'</span></div>';
     }).join('');
   } else { panel.style.display='none'; }
 }
