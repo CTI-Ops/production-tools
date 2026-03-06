@@ -23,6 +23,10 @@
   .logo-text { font-size: 1rem; font-weight: 700; letter-spacing: -0.02em; }
   .header-meta { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: var(--text-muted); }
   main { max-width: 680px; margin: 0 auto; padding: 1.5rem 1rem 6rem; }
+  .conn-status { text-align: center; padding: 2rem 1rem; color: var(--text-dim); font-size: 0.85rem; }
+  .conn-status .spinner { display: inline-block; width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: middle; margin-right: 0.5rem; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .form-disabled { opacity: 0.4; pointer-events: none; }
   .config-banner { background: var(--red-bg); border: 1px solid rgba(248,81,73,0.25); border-radius: var(--radius); padding: 1rem 1.2rem; margin-bottom: 1.5rem; display: none; }
   .config-banner.visible { display: block; }
   .config-banner h3 { color: var(--red); font-size: 0.85rem; font-weight: 600; margin-bottom: 0.3rem; }
@@ -115,6 +119,8 @@
     <input type="text" id="scriptUrl" placeholder="https://script.google.com/macros/s/your-id-here/exec" value="">
     <button onclick="saveUrl()">Save &amp; Connect</button>
   </div>
+  <div class="conn-status" id="connStatus"><span class="spinner"></span>Connecting to Google Sheet...</div>
+  <div id="formContainer" class="form-disabled" style="display:none;">
   <div class="section"><div class="section-head"><span class="section-num">01</span><span class="section-label">Date</span></div>
     <div class="section-body">
       <div class="field"><label>Date <span class="req">*</span></label><input type="date" id="date"></div>
@@ -157,11 +163,12 @@
       <div class="log-table-wrap"><table class="log-table"><thead><tr><th>#</th><th>Item</th><th>Operation</th><th>Time</th><th>Qty</th><th>T/Part</th></tr></thead><tbody id="logBody"></tbody></table></div>
     </div>
   </div>
+  </div>
 </main>
 <div class="toast" id="toast"><button class="toast-x" onclick="hideToast()">&times;</button><div class="toast-title" id="toastTitle"></div><div class="toast-body" id="toastBody"></div></div>
 
 <script>
-const DEFAULT_SCRIPT_URL='https://script.google.com/macros/s/AKfycbyLEF54JygY8FXhd7woIf-I3hmc9XKUtMjkMpXGs5zsRaMMcx_OG8uPke72s1RdyqIp3w/exec';
+const DEFAULT_SCRIPT_URL='https://script.google.com/macros/s/AKfycbxE6a15_xQnwT6j_L8G2NKL-AYDRr8vaE9C_rt4pTYAVtAwwIFvwKQlTcjBL11oDU63yA/exec';
 const storedUrl=localStorage.getItem('prodlog_script_url');
 if(storedUrl && storedUrl!==DEFAULT_SCRIPT_URL){localStorage.removeItem('prodlog_script_url');}
 let CONFIG=null, SCRIPT_URL=DEFAULT_SCRIPT_URL, sessionEntries=[], toastTimer=null;
@@ -182,8 +189,18 @@ function saveUrl(){
 }
 
 async function loadConfig(){
-  try{const res=await fetch(SCRIPT_URL); CONFIG=await res.json(); if(CONFIG.error) throw new Error(CONFIG.error); populateForm(); document.getElementById('configBanner').classList.remove('visible');}
-  catch(e){document.getElementById('configBanner').classList.add('visible'); showToast('err','Connection Failed','Could not reach Google Sheet. Check URL and deployment.');}
+  const status=document.getElementById('connStatus'), form=document.getElementById('formContainer');
+  status.style.display='block'; form.style.display='none'; form.classList.add('form-disabled');
+  try{
+    const res=await fetch(SCRIPT_URL); CONFIG=await res.json(); if(CONFIG.error) throw new Error(CONFIG.error);
+    populateForm(); document.getElementById('configBanner').classList.remove('visible');
+    status.style.display='none'; form.style.display='block'; form.classList.remove('form-disabled');
+  }catch(e){
+    status.innerHTML='<span style="color:var(--red);">Failed to connect.</span> Check URL below.';
+    form.style.display='block'; form.classList.add('form-disabled');
+    document.getElementById('configBanner').classList.add('visible');
+    showToast('err','Connection Failed','Could not reach Google Sheet. Check URL and deployment.');
+  }
 }
 
 function getCustom(key){try{return JSON.parse(localStorage.getItem('prodlog_custom_'+key))||[];}catch(e){return[];}}

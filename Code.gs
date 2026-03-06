@@ -3,7 +3,7 @@
 // Then deploy as Web App (Execute as: Me, Access: Anyone)
 //
 // Config sheet layout (must match exactly):
-//   A: Item  |  B: Operation  |  C: (empty)  |  D: Issue Types
+//   A: Item  |  B: Operation  |  C: Issue Types
 
 const SS = SpreadsheetApp.getActiveSpreadsheet();
 const LOG_SHEET = 'Data Log';
@@ -13,7 +13,7 @@ const CONFIG_SHEET = 'Config';
 const COL = {
   ITEM: 1,       // A
   OPERATION: 2,  // B
-  ISSUE_TYPE: 4  // D
+  ISSUE_TYPE: 3  // C
 };
 
 // ── GET: return config data or dashboard KPIs ──
@@ -51,11 +51,9 @@ function doPost(e) {
 
 // ── Submit a production log entry ──
 // Log sheet columns:
-//   A: Id | B: Submission Time | C: Date | D: Item | E: Process Task
-//   F: Start Time | G: End Time | H: Quantity | I: Issues | J: Comments
-//   K: Task Time (min) | L: Expected (min) | M: Time/Part (min)
-//   N: Standard (min/part) | O: % Difference | P: Issue Count
-//   Q: Off Target No Issue (Hrs) | R: On Target | S: Time Error
+//   A: # | B: Submission Time | C: Date | D: Item | E: Op
+//   F: Start Time | G: End Time | H: Qty | I: Issues | J: Comments
+//   K: Time (min) | L: Time/Part (min)
 function handleSubmit(data) {
   const sheet = SS.getSheetByName(LOG_SHEET) || SS.insertSheet(LOG_SHEET);
   const id = sheet.getLastRow(); // row number as entry ID
@@ -68,28 +66,20 @@ function handleSubmit(data) {
 
   // Count semicolon-separated issues (blank = 0)
   const issueStr = (data.issues || '').trim();
-  const issueCount = issueStr ? issueStr.split(';').filter(s => s.trim()).length : 0;
 
   sheet.appendRow([
-    id,                  // A: Id
+    id,                  // A: #
     new Date(),          // B: Submission Time
     data.date,           // C: Date
     data.item,           // D: Item
-    data.operation,      // E: Process Task
+    data.operation,      // E: Op
     data.start_time,     // F: Start Time
     data.end_time,       // G: End Time
-    qty,                 // H: Quantity
+    qty,                 // H: Qty
     issueStr,            // I: Issues
     data.comments,       // J: Comments
-    taskTime,            // K: Task Time (min)
-    '',                  // L: Expected (min) — filled by sheet formula
-    timePer,             // M: Time/Part (min)
-    '',                  // N: Standard (min/part) — filled by sheet formula
-    '',                  // O: % Difference — filled by sheet formula
-    issueCount,          // P: Issue Count
-    '',                  // Q: Off Target No Issue (Hrs) — filled by sheet formula
-    '',                  // R: On Target — filled by sheet formula
-    ''                   // S: Time Error — filled by sheet formula
+    taskTime,            // K: Time (min)
+    timePer              // L: Time/Part (min)
   ]);
 
   return jsonResponse({
@@ -173,7 +163,7 @@ function getDashboardData() {
   const today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
   const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
 
-  // Columns (0-indexed): A:Id B:Time C:Date D:Item E:Op F:Start G:End H:Qty I:Issues J:Comments K:TaskTime
+  // Columns (0-indexed): A:# B:Time C:Date D:Item E:Op F:Start G:End H:Qty I:Issues J:Comments K:Time L:Time/Part
   let totalEntries = 0, totalParts = 0, totalTime = 0, entriesWithIssues = 0;
   const issuesBreakdown = {}, itemsBreakdown = {};
   const recentRows = [];
