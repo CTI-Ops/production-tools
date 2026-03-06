@@ -23,6 +23,9 @@ function doGet(e) {
     if (action === 'dashboard') {
       return jsonResponse(getDashboardData());
     }
+    if (action === 'high_scores') {
+      return jsonResponse(getHighScores());
+    }
     const config = getConfig();
     return ContentService.createTextOutput(JSON.stringify(config))
       .setMimeType(ContentService.MimeType.JSON);
@@ -39,6 +42,8 @@ function doPost(e) {
 
     if (data.action === 'submit') {
       return handleSubmit(data);
+    } else if (data.action === 'high_score') {
+      return handleHighScore(data);
     } else if (data.action === 'add_config') {
       return handleAddConfig(data);
     } else {
@@ -291,6 +296,86 @@ function getDashboardData() {
     recent_entries: recent,
     period: 'all time'
   };
+}
+
+// ── High Scores (stored on Data Log sheet starting at V100) ──
+// Layout: V=Game, W=Initials, X=Score, Y=Level, Z=Date
+const HS_START_ROW = 100;
+const HS_COL = { GAME: 22, INITIALS: 23, SCORE: 24, LEVEL: 25, DATE: 26 }; // V=22, W=23, X=24, Y=25, Z=26
+
+function handleHighScore(data) {
+  const sheet = SS.getSheetByName(LOG_SHEET) || SS.insertSheet(LOG_SHEET);
+  const game = (data.game || '').trim();
+  const initials = (data.initials || '???').toUpperCase().substring(0, 3);
+  const score = parseInt(data.score) || 0;
+  const level = parseInt(data.level) || 1;
+  if (!game || score <= 0) return jsonResponse({ success: false, error: 'Invalid score data' });
+
+  // Header row at V100
+  var headerCell = sheet.getRange(HS_START_ROW, HS_COL.GAME).getValue();
+  if (!headerCell || headerCell.toString().trim() === '') {
+    sheet.getRange(HS_START_ROW, HS_COL.GAME).setValue('Game');
+    sheet.getRange(HS_START_ROW, HS_COL.INITIALS).setValue('Initials');
+    sheet.getRange(HS_START_ROW, HS_COL.SCORE).setValue('Score');
+    sheet.getRange(HS_START_ROW, HS_COL.LEVEL).setValue('Level');
+    sheet.getRange(HS_START_ROW, HS_COL.DATE).setValue('Date');
+  }
+
+  // Find next empty row starting from V101
+  var nextRow = HS_START_ROW + 1;
+  var lastRow = sheet.getLastRow();
+  if (lastRow >= nextRow) {
+    var existing = sheet.getRange(nextRow, HS_COL.GAME, lastRow - nextRow + 1, 1).getValues();
+    for (var i = 0; i < existing.length; i++) {
+      if (!existing[i][0] || existing[i][0].toString().trim() === '') { nextRow = nextRow + i; break; }
+      if (i === existing.length - 1) { nextRow = nextRow + existing.length; }
+    }
+  }
+
+  sheet.getRange(nextRow, HS_COL.GAME).setValue(game);
+  sheet.getRange(nextRow, HS_COL.INITIALS).setValue(initials);
+  sheet.getRange(nextRow, HS_COL.SCORE).setValue(score);
+  sheet.getRange(nextRow, HS_COL.LEVEL).setValue(level);
+  sheet.getRange(nextRow, HS_COL.DATE).setValue(new Date());
+
+  return jsonResponse({ success: true, game: game, score: score, row: nextRow });
+}
+
+function getHighScores() {
+  var sheet = SS.getSheetByName(LOG_SHEET);
+  if (!sheet) return { scores: [] };
+
+  var lastRow = sheet.getLastRow();
+  if (lastRow < HS_START_ROW + 1) return { scores: [] };
+
+  var numRows = lastRow - HS_START_ROW; // skip header
+  var data = sheet.getRange(HS_START_ROW + 1, HS_COL.GAME, numRows, 5).getValues();
+  var scores = [];
+
+  for (var i = 0; i < data.length; i++) {
+    var game = (data[i][0] || '').toString().trim();
+    if (!game) continue;
+    scores.push({
+      game: game,
+      initials: (data[i][1] || '???').toString().trim(),
+      score: parseInt(data[i][2]) || 0,
+      level: parseInt(data[i][3]) || 0,
+      date: data[i][4] instanceof Date ? Utilities.formatDate(data[i][4], Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm') : data[i][4].toString()
+    });
+  }
+
+  // Return top 10 per game
+  var byGame = {};
+  scores.forEach(function(s) {
+    if (!byGame[s.game]) byGame[s.game] = [];
+    byGame[s.game].push(s);
+  });
+  for (var g in byGame) {
+    byGame[g].sort(function(a, b) { return b.score - a.score; });
+    byGame[g] = byGame[g].slice(0, 10);
+  }
+
+  return { scores_by_game: byGame };
 }
 
 // ── Helpers ──

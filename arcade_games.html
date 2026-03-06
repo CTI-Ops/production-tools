@@ -127,8 +127,8 @@
         <span class="game-title" id="gameTitle">Select Game</span>
       </div>
       <div class="controls">
-        <span><kbd>ESC</kbd> pause/close</span>
-        <span><kbd>MMB</kbd> close</span>
+        <span><kbd>ESC</kbd> pause &middot; <kbd>ESC</kbd>&times;2 menu &middot; <kbd>ESC</kbd>&times;3 tracker</span>
+        <span><kbd>MMB</kbd> tracker</span>
       </div>
       <button class="close-btn" onclick="closeArcade()">Close</button>
     </div>
@@ -165,10 +165,13 @@
   </div>
 </div>
 
-<div style="display:flex;align-items:center;justify-content:center;height:100vh;">
+<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;gap:1rem;">
   <button onclick="openArcade()" style="font-family:'JetBrains Mono',monospace;font-size:0.9rem;padding:0.8rem 1.6rem;background:#e0952b;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;">
     Open Arcade (for testing)
   </button>
+  <div style="font-family:'JetBrains Mono',monospace;font-size:0.75rem;color:#484f58;text-align:center;line-height:1.6;">
+    <kbd style="background:#21262d;border:1px solid #30363d;border-radius:4px;padding:2px 6px;color:#8b949e;">ESC</kbd> &times;3 &nbsp;or&nbsp; <kbd style="background:#21262d;border:1px solid #30363d;border-radius:4px;padding:2px 6px;color:#8b949e;">Middle Click</kbd> &mdash; return to Production Tracker
+  </div>
 </div>
 
 <script>
@@ -184,6 +187,81 @@ let paused = false;
 let animFrame = null;
 let escPressCount = 0;
 let escTimer = null;
+
+// ── High Score Tracking ──
+const SCRIPT_URL = localStorage.getItem('prodlog_script_url') || 'https://script.google.com/macros/s/AKfycby3Smv16TRvA8-XJJSmfu-pByfEWU2C6r7TCrc1FIcFC5rCtO3C_8XncFUd835PUQ4Z6w/exec';
+
+let initialsEntry = null; // active initials entry state
+
+function submitHighScore(game, score, level, initials) {
+  if (!score || score <= 0) return;
+  fetch(SCRIPT_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' },
+    body: JSON.stringify({ action: 'high_score', game: game, score: score, level: level, initials: initials })
+  }).catch(() => {});
+}
+
+function startInitialsEntry(game, score, level) {
+  initialsEntry = { game, score, level, chars: [], submitted: false };
+  drawInitialsPrompt();
+}
+
+function drawInitialsPrompt() {
+  if (!initialsEntry) return;
+  const e = initialsEntry;
+  const display = [];
+  for (let i = 0; i < 3; i++) display.push(e.chars[i] || '_');
+
+  ctx.fillStyle = 'rgba(14,17,23,0.85)';
+  ctx.fillRect(0, 0, W, H);
+  ctx.textAlign = 'center';
+
+  ctx.font = '700 28px "JetBrains Mono"';
+  ctx.fillStyle = C.red;
+  ctx.fillText('GAME OVER', W / 2, H / 2 - 60);
+
+  ctx.font = '500 16px "JetBrains Mono"';
+  ctx.fillStyle = C.accent;
+  ctx.fillText('Score: ' + e.score, W / 2, H / 2 - 30);
+
+  ctx.font = '500 14px "JetBrains Mono"';
+  ctx.fillStyle = C.dim;
+  ctx.fillText('Enter your initials:', W / 2, H / 2 + 5);
+
+  ctx.font = '700 36px "JetBrains Mono"';
+  ctx.fillStyle = C.text;
+  ctx.fillText(display.join('  '), W / 2, H / 2 + 50);
+
+  if (e.submitted) {
+    ctx.font = '500 13px "JetBrains Mono"';
+    ctx.fillStyle = C.green;
+    ctx.fillText('Score saved!  Press ESC twice to return', W / 2, H / 2 + 80);
+  }
+
+  ctx.textAlign = 'left';
+}
+
+function handleInitialsKey(key) {
+  if (!initialsEntry || initialsEntry.submitted) return false;
+  if (key === 'Backspace') {
+    initialsEntry.chars.pop();
+    drawInitialsPrompt();
+    return true;
+  }
+  if (/^[a-zA-Z0-9]$/.test(key) && initialsEntry.chars.length < 3) {
+    initialsEntry.chars.push(key.toUpperCase());
+    drawInitialsPrompt();
+    if (initialsEntry.chars.length === 3) {
+      initialsEntry.submitted = true;
+      const ini = initialsEntry.chars.join('');
+      submitHighScore(initialsEntry.game, initialsEntry.score, initialsEntry.level, ini);
+      drawInitialsPrompt();
+    }
+    return true;
+  }
+  return true; // consume all keys during entry
+}
 
 // ── Theme Colors ──
 const C = {
@@ -244,16 +322,44 @@ function gameLoop() {
 document.addEventListener('keydown', e => {
   if (!document.getElementById('arcade-overlay').classList.contains('open')) return;
 
+  // Initials entry intercept (non-Escape keys)
+  if (initialsEntry && !initialsEntry.submitted && e.key !== 'Escape') {
+    e.preventDefault();
+    handleInitialsKey(e.key);
+    return;
+  }
+
   if (e.key === 'Escape') {
     e.preventDefault();
-    if (!currentGame) { closeArcade(); return; }
-
     escPressCount++;
+    if (escTimer) clearTimeout(escTimer);
+    escTimer = setTimeout(() => { escPressCount = 0; }, 1200);
+
+    if (escPressCount >= 3) {
+      clearTimeout(escTimer); escPressCount = 0;
+      initialsEntry = null;
+      window.location.href = 'index.html';
+      return;
+    }
+
+    // On initials screen (submitted or not), ESC×2 goes back to menu
+    if (initialsEntry && !currentGame) {
+      if (escPressCount >= 2) {
+        escPressCount = 0; clearTimeout(escTimer);
+        initialsEntry = null;
+        document.getElementById('game-select').classList.remove('hidden');
+        document.getElementById('gameTitle').textContent = 'Select Game';
+        updateHud(0, '—', '—', 'Ready');
+      }
+      return;
+    }
+
+    if (!currentGame) return;
+
     if (escPressCount === 1) {
       togglePause();
-      escTimer = setTimeout(() => { escPressCount = 0; }, 600);
-    } else if (escPressCount >= 2) {
-      clearTimeout(escTimer); escPressCount = 0;
+    } else if (escPressCount === 2) {
+      escPressCount = 0; clearTimeout(escTimer);
       if (animFrame) cancelAnimationFrame(animFrame);
       currentGame = null; paused = false;
       document.getElementById('pause-overlay').classList.add('hidden');
@@ -271,12 +377,12 @@ document.addEventListener('keyup', e => {
   if (currentGame && currentGame.onKey) currentGame.onKey(e.key, false);
 });
 
-// Middle mouse close
+// Middle mouse → back to production log
 document.getElementById('arcade-overlay').addEventListener('mousedown', e => {
-  if (e.button === 1) { e.preventDefault(); closeArcade(); }
+  if (e.button === 1) { e.preventDefault(); window.location.href = 'index.html'; }
 });
 document.getElementById('arcade-overlay').addEventListener('auxclick', e => {
-  if (e.button === 1) { e.preventDefault(); closeArcade(); }
+  if (e.button === 1) { e.preventDefault(); window.location.href = 'index.html'; }
 });
 
 // Mouse tracking for games
@@ -435,16 +541,7 @@ class Breakout {
     currentGame = null;
     updateHud(this.score, 0, this.level, 'GAME OVER');
     this.draw(ctx);
-    ctx.fillStyle = 'rgba(14,17,23,0.8)';
-    ctx.fillRect(0, 0, W, H);
-    ctx.font = '700 28px "JetBrains Mono"';
-    ctx.fillStyle = C.red;
-    ctx.textAlign = 'center';
-    ctx.fillText('GAME OVER', W / 2, H / 2 - 15);
-    ctx.font = '500 14px "JetBrains Mono"';
-    ctx.fillStyle = C.dim;
-    ctx.fillText('Score: ' + this.score + '  |  Press ESC twice to return', W / 2, H / 2 + 15);
-    ctx.textAlign = 'left';
+    startInitialsEntry('Breakout', this.score, this.level);
   }
 
   draw(ctx) {
@@ -648,16 +745,7 @@ class MissileCommand {
     currentGame = null;
     updateHud(this.score, 0, this.level, 'ALL CITIES DESTROYED');
     this.draw(ctx);
-    ctx.fillStyle = 'rgba(14,17,23,0.8)';
-    ctx.fillRect(0, 0, W, H);
-    ctx.font = '700 24px "JetBrains Mono"';
-    ctx.fillStyle = C.red;
-    ctx.textAlign = 'center';
-    ctx.fillText('ALL CITIES DESTROYED', W / 2, H / 2 - 15);
-    ctx.font = '500 14px "JetBrains Mono"';
-    ctx.fillStyle = C.dim;
-    ctx.fillText('Score: ' + this.score + '  |  Press ESC twice to return', W / 2, H / 2 + 15);
-    ctx.textAlign = 'left';
+    startInitialsEntry('Missile Command', this.score, this.level);
   }
 
   draw(ctx) {
@@ -752,9 +840,10 @@ class MissileCommand {
   }
 }
 
-// ── Auto-open for testing ──
-// Remove this line when embedding:
-// openArcade();
+// ── Navigation back to production log (middle mouse) ──
+document.addEventListener('mousedown', function(e) {
+  if (e.button === 1) { e.preventDefault(); window.location.href = 'index.html'; }
+});
 </script>
 </body>
 </html>
