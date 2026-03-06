@@ -53,7 +53,7 @@ function doPost(e) {
 // Log sheet columns:
 //   A: # | B: Submission Time | C: Date | D: Item | E: Op
 //   F: Start Time | G: End Time | H: Qty | I: Issues | J: Comments
-//   K: Time (min) | L: Time/Part (min)
+//   K: Time (min) | L: Time/Part (min) | M: Job Number
 function handleSubmit(data) {
   const sheet = SS.getSheetByName(LOG_SHEET) || SS.insertSheet(LOG_SHEET);
   const id = sheet.getLastRow(); // row number as entry ID
@@ -79,7 +79,8 @@ function handleSubmit(data) {
     issueStr,            // I: Issues
     data.comments,       // J: Comments
     taskTime,            // K: Time (min)
-    timePer              // L: Time/Part (min)
+    timePer,             // L: Time/Part (min)
+    data.job_number || '' // M: Job Number
   ]);
 
   return jsonResponse({
