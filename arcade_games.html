@@ -115,6 +115,29 @@
   #pause-overlay .pause-hint {
     font-family: 'JetBrains Mono', monospace; font-size: 0.65rem; color: #484f58;
   }
+
+  /* ── HIGH SCORE TOOLTIPS ── */
+  .game-btn { position: relative; }
+  .game-btn .hs-tooltip {
+    display: none; position: absolute; left: calc(100% + 10px); top: 50%; transform: translateY(-50%);
+    background: #0d1117; border: 1px solid #30363d; border-radius: 6px;
+    padding: 0.5rem 0.7rem; min-width: 180px; z-index: 20;
+    font-family: 'JetBrains Mono', monospace; white-space: nowrap;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  }
+  .game-btn:hover .hs-tooltip { display: block; }
+  .hs-tooltip .hs-title {
+    font-size: 0.6rem; font-weight: 600; color: #e0952b; text-transform: uppercase;
+    letter-spacing: 0.08em; margin-bottom: 0.3rem;
+  }
+  .hs-tooltip .hs-row {
+    display: flex; justify-content: space-between; gap: 0.8rem;
+    font-size: 0.65rem; line-height: 1.6;
+  }
+  .hs-tooltip .hs-rank { color: #484f58; }
+  .hs-tooltip .hs-name { color: #e6edf3; }
+  .hs-tooltip .hs-score { color: #e0952b; font-weight: 600; }
+  .hs-tooltip .hs-empty { font-size: 0.6rem; color: #484f58; }
 </style>
 </head>
 <body>
@@ -141,10 +164,12 @@
         <div class="game-btn" onclick="startGame('breakout')">
           <div class="game-name">Breakout</div>
           <div class="game-desc">Paddle, ball, bricks. You know the drill.</div>
+          <div class="hs-tooltip" id="tooltip-Breakout"><div class="hs-title">Top 5</div><div class="hs-empty">No scores yet</div></div>
         </div>
         <div class="game-btn" onclick="startGame('missile')">
           <div class="game-name">Missile Command</div>
           <div class="game-desc">Defend your cities. Click to intercept.</div>
+          <div class="hs-tooltip" id="tooltip-Missile Command"><div class="hs-title">Top 5</div><div class="hs-empty">No scores yet</div></div>
         </div>
       </div>
 
@@ -192,6 +217,18 @@ let escTimer = null;
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxKZg_fYZGLN9mvfZpuIpfM5aN4HAo-i8eThPgVA8mZDABMTXc5IZlnCBdmy2PhzdXZiA/exec';
 
 let initialsEntry = null; // active initials entry state
+let cachedScores = {};    // { gameName: [{ initials, score, level, date }, ...] }
+
+function fetchHighScores() {
+  fetch(SCRIPT_URL + '?action=high_scores')
+    .then(r => r.json())
+    .then(data => {
+      if (data.scores_by_game) cachedScores = data.scores_by_game;
+      updateTooltips();
+      if (initialsEntry && initialsEntry.submitted) drawInitialsPrompt();
+    })
+    .catch(() => {});
+}
 
 function submitHighScore(game, score, level, initials) {
   if (!score || score <= 0) return;
@@ -199,7 +236,7 @@ function submitHighScore(game, score, level, initials) {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain' },
     body: JSON.stringify({ action: 'high_score', game: game, score: score, level: level, initials: initials })
-  }).catch(() => {});
+  }).then(() => fetchHighScores()).catch(() => {});
 }
 
 function startInitialsEntry(game, score, level) {
@@ -213,30 +250,88 @@ function drawInitialsPrompt() {
   const display = [];
   for (let i = 0; i < 3; i++) display.push(e.chars[i] || '_');
 
-  ctx.fillStyle = 'rgba(14,17,23,0.85)';
+  ctx.fillStyle = 'rgba(14,17,23,0.92)';
   ctx.fillRect(0, 0, W, H);
   ctx.textAlign = 'center';
 
-  ctx.font = '700 28px "JetBrains Mono"';
-  ctx.fillStyle = C.red;
-  ctx.fillText('GAME OVER', W / 2, H / 2 - 60);
-
-  ctx.font = '500 16px "JetBrains Mono"';
-  ctx.fillStyle = C.accent;
-  ctx.fillText('Score: ' + e.score, W / 2, H / 2 - 30);
-
-  ctx.font = '500 14px "JetBrains Mono"';
-  ctx.fillStyle = C.dim;
-  ctx.fillText('Enter your initials:', W / 2, H / 2 + 5);
-
-  ctx.font = '700 36px "JetBrains Mono"';
-  ctx.fillStyle = C.text;
-  ctx.fillText(display.join('  '), W / 2, H / 2 + 50);
-
   if (e.submitted) {
-    ctx.font = '500 13px "JetBrains Mono"';
+    // ── Game over with leaderboard ──
+    ctx.font = '700 22px "JetBrains Mono"';
+    ctx.fillStyle = C.red;
+    ctx.fillText('GAME OVER', W / 2, 40);
+
+    ctx.font = '500 14px "JetBrains Mono"';
+    ctx.fillStyle = C.accent;
+    ctx.fillText('Your Score: ' + e.score, W / 2, 65);
+
+    ctx.font = '500 11px "JetBrains Mono"';
     ctx.fillStyle = C.green;
-    ctx.fillText('Score saved!  Press ESC twice to return', W / 2, H / 2 + 80);
+    ctx.fillText('Score saved!', W / 2, 85);
+
+    // Draw leaderboard
+    const scores = cachedScores[e.game] || [];
+    const lbX = W / 2, lbTop = 115;
+
+    ctx.font = '600 13px "JetBrains Mono"';
+    ctx.fillStyle = C.accent;
+    ctx.fillText('── TOP 5 ──', lbX, lbTop);
+
+    if (scores.length === 0) {
+      ctx.font = '500 12px "JetBrains Mono"';
+      ctx.fillStyle = C.muted;
+      ctx.fillText('Loading...', lbX, lbTop + 30);
+    } else {
+      // Table header
+      const colRank = lbX - 120, colInit = lbX - 60, colScore = lbX + 20, colLvl = lbX + 100;
+      ctx.textAlign = 'left';
+      ctx.font = '600 11px "JetBrains Mono"';
+      ctx.fillStyle = C.muted;
+      ctx.fillText('#', colRank, lbTop + 25);
+      ctx.fillText('WHO', colInit, lbTop + 25);
+      ctx.fillText('SCORE', colScore, lbTop + 25);
+      ctx.fillText('LVL', colLvl, lbTop + 25);
+
+      // Divider
+      ctx.strokeStyle = C.border; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(colRank, lbTop + 32); ctx.lineTo(colLvl + 30, lbTop + 32); ctx.stroke();
+
+      for (let i = 0; i < scores.length && i < 5; i++) {
+        const s = scores[i];
+        const rowY = lbTop + 50 + i * 28;
+        const isPlayer = s.initials === e.chars.join('') && s.score === e.score;
+
+        ctx.font = isPlayer ? '700 13px "JetBrains Mono"' : '500 13px "JetBrains Mono"';
+        ctx.fillStyle = isPlayer ? C.accent : C.text;
+        ctx.fillText((i + 1) + '.', colRank, rowY);
+        ctx.fillText(s.initials, colInit, rowY);
+        ctx.fillText(s.score.toLocaleString(), colScore, rowY);
+        ctx.fillStyle = isPlayer ? C.accent : C.dim;
+        ctx.fillText(s.level, colLvl, rowY);
+      }
+    }
+
+    ctx.textAlign = 'center';
+    ctx.font = '500 11px "JetBrains Mono"';
+    ctx.fillStyle = C.muted;
+    ctx.fillText('Press ESC twice to return to menu', W / 2, H - 20);
+
+  } else {
+    // ── Initials entry screen ──
+    ctx.font = '700 28px "JetBrains Mono"';
+    ctx.fillStyle = C.red;
+    ctx.fillText('GAME OVER', W / 2, H / 2 - 60);
+
+    ctx.font = '500 16px "JetBrains Mono"';
+    ctx.fillStyle = C.accent;
+    ctx.fillText('Score: ' + e.score, W / 2, H / 2 - 30);
+
+    ctx.font = '500 14px "JetBrains Mono"';
+    ctx.fillStyle = C.dim;
+    ctx.fillText('Enter your initials:', W / 2, H / 2 + 5);
+
+    ctx.font = '700 36px "JetBrains Mono"';
+    ctx.fillStyle = C.text;
+    ctx.fillText(display.join('  '), W / 2, H / 2 + 50);
   }
 
   ctx.textAlign = 'left';
@@ -272,6 +367,24 @@ const C = {
   brick1: '#e0952b', brick2: '#f0a840', brick3: '#3fb950', brick4: '#58a6ff', brick5: '#f85149',
 };
 
+// ── Tooltip updater ──
+function updateTooltips() {
+  ['Breakout', 'Missile Command'].forEach(game => {
+    const el = document.getElementById('tooltip-' + game);
+    if (!el) return;
+    const scores = cachedScores[game];
+    if (!scores || scores.length === 0) {
+      el.innerHTML = '<div class="hs-title">Top 5</div><div class="hs-empty">No scores yet</div>';
+      return;
+    }
+    let html = '<div class="hs-title">Top 5</div>';
+    scores.slice(0, 5).forEach((s, i) => {
+      html += '<div class="hs-row"><span class="hs-rank">' + (i + 1) + '.</span><span class="hs-name">' + s.initials + '</span><span class="hs-score">' + s.score.toLocaleString() + '</span></div>';
+    });
+    el.innerHTML = html;
+  });
+}
+
 // ── Open / Close ──
 function openArcade() {
   document.getElementById('arcade-overlay').classList.add('open');
@@ -280,6 +393,7 @@ function openArcade() {
   document.getElementById('gameTitle').textContent = 'Select Game';
   updateHud(0, '—', '—', 'Ready');
   paused = false; currentGame = null;
+  fetchHighScores();
 }
 
 function closeArcade() {
