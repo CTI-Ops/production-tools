@@ -520,50 +520,153 @@ canvas.addEventListener('click', e => {
 // ════════════════════════════════════════
 class Breakout {
   constructor() {
+    this.basePaddleW = 90;
     this.paddleW = 90; this.paddleH = 12; this.paddleY = H - 35;
     this.paddleX = (W - this.paddleW) / 2;
-    this.ballR = 5;
     this.score = 0; this.lives = 3; this.level = 1;
     this.particles = [];
+    this.floatingText = [];
+    this.powerups = [];       // falling power-up items
+    this.shakeFrames = 0;
+    this.comboCount = 0;
+    this.bricksThisLevel = 0;
+
+    // Power-up timers
+    this.wideTimer = 0;
+    this.fireTimer = 0;
+
     this.buildLevel();
-    this.resetBall();
+    this.balls = [];
+    this.spawnBall(true);
     this.keys = {};
     updateHud(0, 3, 1, 'Move paddle with mouse or arrows');
   }
 
   buildLevel() {
     this.bricks = [];
+    this.bricksThisLevel = 0;
+    // Paddle shrinks per level
+    this.basePaddleW = Math.max(60, 90 - (this.level - 1) * 4);
+    if (this.wideTimer <= 0) this.paddleW = this.basePaddleW;
+
     const cols = 12, rows = 5 + Math.min(this.level - 1, 3);
     const bw = 46, bh = 16, pad = 3, offsetX = (W - cols * (bw + pad)) / 2, offsetY = 40;
     const colors = [C.brick5, C.brick1, C.brick2, C.brick3, C.brick4, C.dim, C.accentDim, C.cyan];
+
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
-        this.bricks.push({
-          x: offsetX + c * (bw + pad), y: offsetY + r * (bh + pad),
-          w: bw, h: bh, color: colors[r % colors.length],
-          hits: r === 0 && this.level > 1 ? 2 : 1
-        });
+        let type = 'normal', hits = 1, color = colors[r % colors.length];
+
+        // Tough bricks: top row from level 2+
+        if (r === 0 && this.level > 1) { type = 'tough'; hits = 2; }
+        // Armored bricks: top 2 rows from level 3+
+        if (r <= 1 && this.level >= 3) { type = 'armored'; hits = 3; color = '#6e7681'; }
+        // Explosive bricks: random from level 4+
+        if (this.level >= 4 && type === 'normal' && Math.random() < 0.06) {
+          type = 'explosive'; hits = 1; color = '#ff6b35';
+        }
+        // Indestructible bricks: sparse pattern from level 4+
+        if (this.level >= 4 && r === Math.floor(rows / 2) && (c === 2 || c === 5 || c === 8 || c === 11) && Math.random() < 0.5) {
+          type = 'indestructible'; hits = 999; color = '#2d333b';
+        }
+
+        this.bricks.push({ x: offsetX + c * (bw + pad), y: offsetY + r * (bh + pad), w: bw, h: bh, color, hits, type, origColor: color });
       }
     }
   }
 
-  resetBall() {
-    this.bx = W / 2; this.by = this.paddleY - 20;
+  spawnBall(primary) {
+    const speed = Math.min(8, 4 + this.level * 0.5);
     const angle = -Math.PI / 2 + (Math.random() - 0.5) * 0.8;
-    const speed = 4 + this.level * 0.5;
-    this.bvx = Math.cos(angle) * speed;
-    this.bvy = Math.sin(angle) * speed;
-    this.launched = false;
+    this.balls.push({
+      x: primary ? W / 2 : this.paddleX + this.paddleW / 2,
+      y: this.paddleY - 20,
+      vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+      r: 5, launched: !primary, trail: [], fire: false
+    });
   }
 
   onKey(key, down) {
     this.keys[key] = down;
-    if (key === ' ' && down && !this.launched) this.launched = true;
+    if (key === ' ' && down) {
+      const unlaunched = this.balls.find(b => !b.launched);
+      if (unlaunched) unlaunched.launched = true;
+    }
   }
 
-  onClick() { if (!this.launched) this.launched = true; }
+  onClick() {
+    const unlaunched = this.balls.find(b => !b.launched);
+    if (unlaunched) unlaunched.launched = true;
+  }
+
+  spawnPowerup(x, y) {
+    const types = ['wide', 'multi', 'fire', 'life'];
+    const type = types[Math.floor(Math.random() * types.length)];
+    this.powerups.push({ x, y, type, vy: 1.5, pulse: 0 });
+  }
+
+  collectPowerup(pu) {
+    const labels = { wide: 'WIDE PADDLE', multi: 'MULTI-BALL', fire: 'FIRE BALL', life: '+1 LIFE' };
+    const colors = { wide: C.green, multi: C.cyan, fire: C.red, life: C.text };
+    this.floatingText.push({ text: labels[pu.type], x: pu.x, y: pu.y, life: 1, color: colors[pu.type] });
+    this.spawnParticles(pu.x, pu.y, colors[pu.type], 8);
+
+    if (pu.type === 'wide') {
+      this.paddleW = 140;
+      this.wideTimer = 480; // ~8 seconds
+    } else if (pu.type === 'multi') {
+      // Spawn 2 extra balls from paddle
+      for (let i = 0; i < 2; i++) {
+        const speed = Math.min(8, 4 + this.level * 0.5);
+        const angle = -Math.PI / 2 + (Math.random() - 0.5) * 1.2;
+        this.balls.push({
+          x: this.paddleX + this.paddleW / 2, y: this.paddleY - 10,
+          vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+          r: 5, launched: true, trail: [], fire: this.fireTimer > 0
+        });
+      }
+    } else if (pu.type === 'fire') {
+      this.fireTimer = 300; // ~5 seconds
+      this.balls.forEach(b => b.fire = true);
+    } else if (pu.type === 'life') {
+      this.lives++;
+    }
+  }
+
+  explodeBrick(idx) {
+    const b = this.bricks[idx];
+    const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+    this.spawnParticles(cx, cy, b.origColor, 14);
+    this.shakeFrames = 4;
+
+    // Explosive: destroy neighbors in radius
+    if (b.type === 'explosive') {
+      this.spawnParticles(cx, cy, '#ff6b35', 20);
+      for (let j = this.bricks.length - 1; j >= 0; j--) {
+        if (j === idx) continue;
+        const nb = this.bricks[j];
+        if (nb.type === 'indestructible') continue;
+        const dx = (nb.x + nb.w / 2) - cx, dy = (nb.y + nb.h / 2) - cy;
+        if (dx * dx + dy * dy < 2500) { // 50px radius
+          this.spawnParticles(nb.x + nb.w / 2, nb.y + nb.h / 2, nb.origColor, 8);
+          this.score += 10 * this.level;
+          this.bricksThisLevel++;
+          this.bricks.splice(j, 1);
+          if (j < idx) idx--;
+        }
+      }
+    }
+    this.bricks.splice(idx, 1);
+  }
 
   update() {
+    // Power-up timers
+    if (this.wideTimer > 0) { this.wideTimer--; if (this.wideTimer <= 0) this.paddleW = this.basePaddleW; }
+    if (this.fireTimer > 0) { this.fireTimer--; if (this.fireTimer <= 0) this.balls.forEach(b => b.fire = false); }
+
+    // Shake decay
+    if (this.shakeFrames > 0) this.shakeFrames--;
+
     // Paddle
     const target = Math.max(this.paddleW / 2, Math.min(W - this.paddleW / 2, mouseX));
     this.paddleX += (target - this.paddleX - this.paddleW / 2) * 0.3;
@@ -571,72 +674,145 @@ class Breakout {
     if (this.keys['ArrowRight']) this.paddleX += 7;
     this.paddleX = Math.max(0, Math.min(W - this.paddleW, this.paddleX));
 
-    if (!this.launched) { this.bx = this.paddleX + this.paddleW / 2; this.by = this.paddleY - 10; return; }
+    // Update each ball
+    const deadBalls = [];
+    for (let bi = this.balls.length - 1; bi >= 0; bi--) {
+      const ball = this.balls[bi];
 
-    // Ball
-    this.bx += this.bvx; this.by += this.bvy;
+      if (!ball.launched) {
+        ball.x = this.paddleX + this.paddleW / 2;
+        ball.y = this.paddleY - 10;
+        continue;
+      }
 
-    // Walls
-    if (this.bx - this.ballR <= 0) { this.bx = this.ballR; this.bvx = Math.abs(this.bvx); }
-    if (this.bx + this.ballR >= W) { this.bx = W - this.ballR; this.bvx = -Math.abs(this.bvx); }
-    if (this.by - this.ballR <= 0) { this.by = this.ballR; this.bvy = Math.abs(this.bvy); }
+      // Trail
+      ball.trail.push({ x: ball.x, y: ball.y });
+      if (ball.trail.length > 6) ball.trail.shift();
 
-    // Bottom
-    if (this.by > H + 20) {
-      this.lives--;
-      if (this.lives <= 0) { this.gameOver(); return; }
-      this.resetBall();
-      updateHud(this.score, this.lives, this.level, 'Click to launch');
-      return;
-    }
+      ball.x += ball.vx; ball.y += ball.vy;
 
-    // Paddle collision
-    if (this.bvy > 0 && this.by + this.ballR >= this.paddleY && this.by + this.ballR <= this.paddleY + this.paddleH &&
-        this.bx >= this.paddleX && this.bx <= this.paddleX + this.paddleW) {
-      const hit = (this.bx - this.paddleX) / this.paddleW;
-      const angle = (hit - 0.5) * Math.PI * 0.7 - Math.PI / 2;
-      const speed = Math.sqrt(this.bvx * this.bvx + this.bvy * this.bvy);
-      this.bvx = Math.cos(angle) * speed;
-      this.bvy = Math.sin(angle) * speed;
-      if (this.bvy > -1.5) this.bvy = -1.5;
-      this.by = this.paddleY - this.ballR;
-    }
+      // Walls
+      if (ball.x - ball.r <= 0) { ball.x = ball.r; ball.vx = Math.abs(ball.vx); }
+      if (ball.x + ball.r >= W) { ball.x = W - ball.r; ball.vx = -Math.abs(ball.vx); }
+      if (ball.y - ball.r <= 0) { ball.y = ball.r; ball.vy = Math.abs(ball.vy); }
 
-    // Brick collision
-    for (let i = this.bricks.length - 1; i >= 0; i--) {
-      const b = this.bricks[i];
-      if (this.bx + this.ballR > b.x && this.bx - this.ballR < b.x + b.w &&
-          this.by + this.ballR > b.y && this.by - this.ballR < b.y + b.h) {
-        // Determine side
-        const overlapL = (this.bx + this.ballR) - b.x;
-        const overlapR = (b.x + b.w) - (this.bx - this.ballR);
-        const overlapT = (this.by + this.ballR) - b.y;
-        const overlapB = (b.y + b.h) - (this.by - this.ballR);
-        const minO = Math.min(overlapL, overlapR, overlapT, overlapB);
-        if (minO === overlapT || minO === overlapB) this.bvy = -this.bvy;
-        else this.bvx = -this.bvx;
+      // Bottom
+      if (ball.y > H + 20) { deadBalls.push(bi); continue; }
 
-        b.hits--;
-        if (b.hits <= 0) {
-          this.spawnParticles(b.x + b.w / 2, b.y + b.h / 2, b.color, 8);
-          this.bricks.splice(i, 1);
-          this.score += 10 * this.level;
-        } else {
-          b.color = C.dim;
-          this.score += 5;
+      // Paddle collision
+      if (ball.vy > 0 && ball.y + ball.r >= this.paddleY && ball.y + ball.r <= this.paddleY + this.paddleH &&
+          ball.x >= this.paddleX && ball.x <= this.paddleX + this.paddleW) {
+        const hit = (ball.x - this.paddleX) / this.paddleW;
+        const angle = (hit - 0.5) * Math.PI * 0.7 - Math.PI / 2;
+        const speed = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
+        ball.vx = Math.cos(angle) * speed;
+        ball.vy = Math.sin(angle) * speed;
+        if (ball.vy > -1.5) ball.vy = -1.5;
+        ball.y = this.paddleY - ball.r;
+        // Paddle sparks
+        for (let i = 0; i < 4; i++) {
+          this.particles.push({ x: ball.x, y: this.paddleY, vx: (Math.random() - 0.5) * 3, vy: -Math.random() * 2 - 1, life: 0.7, color: C.accent, size: 2, shape: 'rect' });
         }
-        updateHud(this.score, this.lives, this.level, 'Playing');
-        break;
+        this.comboCount = 0;
+      }
+
+      // Brick collision
+      for (let i = this.bricks.length - 1; i >= 0; i--) {
+        const b = this.bricks[i];
+        if (ball.x + ball.r > b.x && ball.x - ball.r < b.x + b.w &&
+            ball.y + ball.r > b.y && ball.y - ball.r < b.y + b.h) {
+
+          // Bounce (unless fire ball)
+          if (!ball.fire || b.type === 'indestructible') {
+            const overlapL = (ball.x + ball.r) - b.x;
+            const overlapR = (b.x + b.w) - (ball.x - ball.r);
+            const overlapT = (ball.y + ball.r) - b.y;
+            const overlapB = (b.y + b.h) - (ball.y - ball.r);
+            const minO = Math.min(overlapL, overlapR, overlapT, overlapB);
+            if (minO === overlapT || minO === overlapB) ball.vy = -ball.vy;
+            else ball.vx = -ball.vx;
+          }
+
+          if (b.type === 'indestructible') { break; }
+
+          b.hits--;
+          if (b.hits <= 0) {
+            this.bricksThisLevel++;
+            // Speed bump every 5 bricks
+            if (this.bricksThisLevel % 5 === 0) {
+              this.balls.forEach(bl => {
+                const sp = Math.sqrt(bl.vx * bl.vx + bl.vy * bl.vy);
+                const newSp = Math.min(8, sp + 0.1);
+                const ratio = newSp / sp;
+                bl.vx *= ratio; bl.vy *= ratio;
+              });
+            }
+
+            // Combo
+            this.comboCount++;
+            const mult = Math.min(5, this.comboCount);
+            const pts = 10 * this.level * mult;
+            this.score += pts;
+            if (this.comboCount >= 2) {
+              this.floatingText.push({ text: 'x' + mult, x: b.x + b.w / 2, y: b.y, life: 1, color: C.accent });
+            }
+
+            // Power-up drop (15%)
+            if (Math.random() < 0.15) this.spawnPowerup(b.x + b.w / 2, b.y + b.h / 2);
+
+            this.explodeBrick(i);
+          } else {
+            // Damage visual
+            if (b.type === 'armored' && b.hits === 1) b.color = C.dim;
+            else if (b.type === 'tough') b.color = C.dim;
+            this.score += 5;
+            this.shakeFrames = 2;
+            this.comboCount++;
+          }
+          updateHud(this.score, this.lives, this.level, 'Playing');
+          if (!ball.fire) break;
+        }
       }
     }
 
-    // Win
-    if (this.bricks.length === 0) {
+    // Remove dead balls
+    for (const bi of deadBalls) this.balls.splice(bi, 1);
+
+    // All balls lost
+    if (this.balls.length === 0) {
+      this.lives--;
+      this.comboCount = 0;
+      if (this.lives <= 0) { this.gameOver(); return; }
+      this.spawnBall(true);
+      updateHud(this.score, this.lives, this.level, 'Click to launch');
+    }
+
+    // Power-ups falling
+    this.powerups = this.powerups.filter(pu => {
+      pu.y += pu.vy;
+      pu.pulse += 0.1;
+      // Paddle collision
+      if (pu.y + 8 >= this.paddleY && pu.y - 8 <= this.paddleY + this.paddleH &&
+          pu.x >= this.paddleX && pu.x <= this.paddleX + this.paddleW) {
+        this.collectPowerup(pu);
+        return false;
+      }
+      return pu.y < H + 10;
+    });
+
+    // Win check (ignore indestructible)
+    if (this.bricks.filter(b => b.type !== 'indestructible').length === 0) {
       this.level++;
+      this.bricksThisLevel = 0;
       this.buildLevel();
-      this.resetBall();
+      // Keep extra balls but respawn primary
+      this.balls = [];
+      this.spawnBall(true);
       updateHud(this.score, this.lives, this.level, 'Level ' + this.level + '! Click to launch');
     }
+
+    // Floating text
+    this.floatingText = this.floatingText.filter(ft => { ft.y -= 0.6; ft.life -= 0.018; return ft.life > 0; });
 
     // Particles
     this.particles = this.particles.filter(p => { p.x += p.vx; p.y += p.vy; p.vy += 0.1; p.life -= 0.025; return p.life > 0; });
@@ -644,9 +820,11 @@ class Breakout {
 
   spawnParticles(x, y, color, count) {
     for (let i = 0; i < count; i++) {
+      const shape = Math.random() < 0.3 ? 'tri' : 'rect';
+      const size = 2 + Math.random() * 3;
       this.particles.push({
-        x, y, vx: (Math.random() - 0.5) * 5, vy: (Math.random() - 0.5) * 5,
-        life: 1, color
+        x, y, vx: (Math.random() - 0.5) * 6, vy: (Math.random() - 0.5) * 6,
+        life: 1, color, size, shape
       });
     }
   }
@@ -659,7 +837,13 @@ class Breakout {
   }
 
   draw(ctx) {
-    ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W, H);
+    ctx.save();
+    // Screen shake
+    if (this.shakeFrames > 0) {
+      ctx.translate((Math.random() - 0.5) * 4, (Math.random() - 0.5) * 4);
+    }
+
+    ctx.fillStyle = C.bg; ctx.fillRect(-5, -5, W + 10, H + 10);
 
     // Grid lines (subtle)
     ctx.strokeStyle = 'rgba(48,54,61,0.3)'; ctx.lineWidth = 0.5;
@@ -670,9 +854,33 @@ class Breakout {
     this.bricks.forEach(b => {
       ctx.fillStyle = b.color;
       ctx.fillRect(b.x, b.y, b.w, b.h);
-      if (b.hits > 1) {
+
+      if (b.type === 'tough' && b.hits > 1) {
         ctx.strokeStyle = C.text; ctx.lineWidth = 1;
         ctx.strokeRect(b.x + 0.5, b.y + 0.5, b.w - 1, b.h - 1);
+      } else if (b.type === 'armored') {
+        ctx.strokeStyle = C.text; ctx.lineWidth = 1;
+        ctx.strokeRect(b.x + 0.5, b.y + 0.5, b.w - 1, b.h - 1);
+        if (b.hits > 1) {
+          ctx.strokeRect(b.x + 2.5, b.y + 2.5, b.w - 5, b.h - 5);
+        }
+      } else if (b.type === 'explosive') {
+        const glow = 0.3 + Math.sin(Date.now() / 200) * 0.2;
+        ctx.globalAlpha = glow;
+        ctx.fillStyle = '#ffaa00';
+        ctx.fillRect(b.x - 1, b.y - 1, b.w + 2, b.h + 2);
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = b.color;
+        ctx.fillRect(b.x, b.y, b.w, b.h);
+        ctx.fillStyle = C.text; ctx.font = '700 9px "JetBrains Mono"'; ctx.textAlign = 'center';
+        ctx.fillText('!', b.x + b.w / 2, b.y + b.h / 2 + 3);
+        ctx.textAlign = 'left';
+      } else if (b.type === 'indestructible') {
+        ctx.strokeStyle = '#484f58'; ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(b.x + 3, b.y + 3); ctx.lineTo(b.x + b.w - 3, b.y + b.h - 3);
+        ctx.moveTo(b.x + b.w - 3, b.y + 3); ctx.lineTo(b.x + 3, b.y + b.h - 3);
+        ctx.stroke();
       }
     });
 
@@ -684,20 +892,84 @@ class Breakout {
     ctx.roundRect(this.paddleX, this.paddleY, this.paddleW, this.paddleH, 4);
     ctx.fill();
 
-    // Ball
-    ctx.fillStyle = C.text;
-    ctx.beginPath(); ctx.arc(this.bx, this.by, this.ballR, 0, Math.PI * 2); ctx.fill();
-    // Ball glow
-    ctx.fillStyle = 'rgba(230,237,243,0.15)';
-    ctx.beginPath(); ctx.arc(this.bx, this.by, this.ballR * 3, 0, Math.PI * 2); ctx.fill();
+    // Balls
+    this.balls.forEach(ball => {
+      // Ball trail
+      ball.trail.forEach((t, idx) => {
+        const alpha = 0.05 + (idx / ball.trail.length) * 0.2;
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = ball.fire ? C.red : C.text;
+        ctx.beginPath(); ctx.arc(t.x, t.y, ball.r * (0.4 + idx / ball.trail.length * 0.6), 0, Math.PI * 2); ctx.fill();
+      });
+      ctx.globalAlpha = 1;
+
+      // Ball
+      ctx.fillStyle = ball.fire ? C.red : C.text;
+      ctx.beginPath(); ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2); ctx.fill();
+      // Ball glow
+      ctx.fillStyle = ball.fire ? 'rgba(248,81,73,0.2)' : 'rgba(230,237,243,0.15)';
+      ctx.beginPath(); ctx.arc(ball.x, ball.y, ball.r * 3, 0, Math.PI * 2); ctx.fill();
+    });
+
+    // Power-ups
+    const puColors = { wide: C.green, multi: C.cyan, fire: C.red, life: C.text };
+    const puLabels = { wide: 'W', multi: 'M', fire: 'F', life: '+' };
+    this.powerups.forEach(pu => {
+      const glow = 0.7 + Math.sin(pu.pulse) * 0.3;
+      ctx.globalAlpha = glow;
+      ctx.fillStyle = puColors[pu.type];
+      ctx.beginPath(); ctx.arc(pu.x, pu.y, 8, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = C.bg;
+      ctx.font = '700 9px "JetBrains Mono"'; ctx.textAlign = 'center';
+      ctx.fillText(puLabels[pu.type], pu.x, pu.y + 3);
+      ctx.textAlign = 'left';
+    });
 
     // Particles
     this.particles.forEach(p => {
       ctx.globalAlpha = p.life;
       ctx.fillStyle = p.color;
-      ctx.fillRect(p.x - 2, p.y - 2, 4, 4);
+      const sz = p.size || 4;
+      if (p.shape === 'tri') {
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y - sz); ctx.lineTo(p.x - sz, p.y + sz); ctx.lineTo(p.x + sz, p.y + sz);
+        ctx.closePath(); ctx.fill();
+      } else {
+        ctx.fillRect(p.x - sz / 2, p.y - sz / 2, sz, sz);
+      }
     });
+
+    // Floating text
+    this.floatingText.forEach(ft => {
+      ctx.globalAlpha = ft.life;
+      ctx.fillStyle = ft.color;
+      ctx.font = '700 14px "JetBrains Mono"'; ctx.textAlign = 'center';
+      ctx.fillText(ft.text, ft.x, ft.y);
+    });
+
     ctx.globalAlpha = 1;
+    ctx.textAlign = 'left';
+
+    // Active power-up indicators (top right)
+    let indX = W - 15;
+    if (this.wideTimer > 0) {
+      ctx.fillStyle = C.green; ctx.font = '600 10px "JetBrains Mono"'; ctx.textAlign = 'right';
+      ctx.fillText('WIDE ' + Math.ceil(this.wideTimer / 60) + 's', indX, 15);
+      indX -= 80;
+    }
+    if (this.fireTimer > 0) {
+      ctx.fillStyle = C.red; ctx.font = '600 10px "JetBrains Mono"'; ctx.textAlign = 'right';
+      ctx.fillText('FIRE ' + Math.ceil(this.fireTimer / 60) + 's', indX, 15);
+      indX -= 80;
+    }
+    if (this.balls.length > 1) {
+      ctx.fillStyle = C.cyan; ctx.font = '600 10px "JetBrains Mono"'; ctx.textAlign = 'right';
+      ctx.fillText('BALLS x' + this.balls.length, indX, 15);
+    }
+    ctx.textAlign = 'left';
+
+    ctx.restore();
   }
 }
 
@@ -715,9 +987,16 @@ class MissileCommand {
     this.particles = [];
     this.powerups = [];      // falling power-up crates
     this.floatingText = [];  // floating score/effect text
+    this.shockwaves = [];    // expanding ring effects
     this.spawnTimer = 0;
     this.spawnRate = 90;
     this.groundY = H - 30;
+    this.chainCount = 0;     // chain reaction tracking
+    this.chainTimer = 0;
+
+    // Bonus wave
+    this.bonusWave = false;
+    this.bonusWaveTimer = 0;
 
     // Power-up state
     this.megaBomb = false;   this.megaBombTimer = 0;
@@ -791,44 +1070,87 @@ class MissileCommand {
 
   onKey() {}
 
+  spawnMissile() {
+    const aliveCities = this.cities.filter(c => c.alive);
+    if (aliveCities.length === 0) return;
+    const target = aliveCities[Math.floor(Math.random() * aliveCities.length)];
+    const sx = Math.random() * W;
+    const baseSpeed = 0.8 + this.level * 0.2 + Math.random() * 0.3;
+
+    // Determine missile type
+    let type = 'normal', hits = 1, radius = 2.5;
+    if (this.level >= 4 && Math.random() < 0.15) {
+      type = 'heavy'; hits = 2; radius = 4;
+    } else if (this.level >= 6 && Math.random() < 0.1) {
+      type = 'mirv'; hits = 1; radius = 2.5;
+    }
+
+    const speed = type === 'heavy' ? baseSpeed * 0.7 : baseSpeed;
+    const dx = target.x - sx, dy = this.groundY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    this.missiles.push({
+      x: sx, y: 0, vx: (dx / dist) * speed, vy: (dy / dist) * speed,
+      targetCity: target, trail: [], type, hits, radius, split: false
+    });
+  }
+
   update() {
     // Power-up timers
     if (this.megaBombTimer > 0) { this.megaBombTimer--; if (this.megaBombTimer <= 0) this.megaBomb = false; }
     if (this.slowMoTimer > 0) { this.slowMoTimer--; if (this.slowMoTimer <= 0) this.slowMo = false; }
 
+    // Chain timer decay
+    if (this.chainTimer > 0) { this.chainTimer--; if (this.chainTimer <= 0) this.chainCount = 0; }
+
+    // Bonus wave timer
+    if (this.bonusWave) {
+      this.bonusWaveTimer--;
+      if (this.bonusWaveTimer <= 0) this.bonusWave = false;
+    }
+
     const slowFactor = this.slowMo ? 0.4 : 1;
 
     // Spawn incoming missiles
     this.spawnTimer++;
-    const rate = Math.max(30, this.spawnRate - this.level * 8);
+    const rate = this.bonusWave ? 15 : Math.max(30, this.spawnRate - this.level * 8);
     if (this.spawnTimer >= rate) {
       this.spawnTimer = 0;
-      const aliveCities = this.cities.filter(c => c.alive);
-      if (aliveCities.length > 0) {
-        const target = aliveCities[Math.floor(Math.random() * aliveCities.length)];
-        const sx = Math.random() * W;
-        const speed = 0.8 + this.level * 0.15 + Math.random() * 0.3;
-        const dx = target.x - sx, dy = this.groundY - 0;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        this.missiles.push({
-          x: sx, y: 0, vx: (dx / dist) * speed, vy: (dy / dist) * speed,
-          targetCity: target, trail: []
-        });
-      }
+      this.spawnMissile();
+      // Double spawn after level 5
+      if (this.level >= 5 && Math.random() < 0.4) this.spawnMissile();
     }
 
     // Update incoming missiles
+    const newMissiles = [];
     this.missiles = this.missiles.filter(m => {
       m.trail.push({ x: m.x, y: m.y });
       if (m.trail.length > 30) m.trail.shift();
       m.x += m.vx * slowFactor; m.y += m.vy * slowFactor;
+
+      // MIRV split at y=200
+      if (m.type === 'mirv' && !m.split && m.y >= 200) {
+        m.split = true;
+        this.spawnParticles(m.x, m.y, C.cyan, 10);
+        this.shockwaves.push({ x: m.x, y: m.y, r: 0, maxR: 20, life: 1, color: C.cyan });
+        const aliveCities = this.cities.filter(c => c.alive);
+        for (let i = 0; i < Math.min(3, aliveCities.length); i++) {
+          const t = aliveCities[Math.floor(Math.random() * aliveCities.length)];
+          const speed = 0.8 + this.level * 0.2 + Math.random() * 0.3;
+          const dx = t.x - m.x, dy = this.groundY - m.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          newMissiles.push({
+            x: m.x, y: m.y, vx: (dx / dist) * speed, vy: (dy / dist) * speed,
+            targetCity: t, trail: [], type: 'normal', hits: 1, radius: 2.5, split: false
+          });
+        }
+        return false; // remove parent
+      }
 
       // Hit ground / city
       if (m.y >= this.groundY) {
         if (m.targetCity.alive) {
           const dx = m.x - m.targetCity.x;
           if (Math.abs(dx) < 25) {
-            // Check shield
             const cityIdx = this.cities.indexOf(m.targetCity);
             if (this.shieldedCities.has(cityIdx)) {
               this.shieldedCities.delete(cityIdx);
@@ -849,10 +1171,27 @@ class MissileCommand {
       for (const ex of this.explosions) {
         const dx = m.x - ex.x, dy = m.y - ex.y;
         if (dx * dx + dy * dy < ex.r * ex.r) {
-          this.score += 25 * this.level;
-          this.spawnExplosion(m.x, m.y, 20, C.accent);
-          this.spawnParticles(m.x, m.y, C.brick2, 6);
-          // 12% chance to drop a power-up
+          m.hits--;
+          if (m.hits > 0) {
+            // Heavy missile damaged but not destroyed
+            this.floatingText.push({ text: 'HIT!', x: m.x, y: m.y - 10, life: 0.6, color: C.accent });
+            this.spawnParticles(m.x, m.y, C.accent, 4);
+            return true; // survives
+          }
+          const pts = (m.type === 'heavy' ? 50 : 25) * this.level * (this.bonusWave ? 2 : 1);
+          this.score += pts;
+          this.spawnExplosion(m.x, m.y, m.type === 'heavy' ? 30 : 20, C.accent);
+          this.spawnParticles(m.x, m.y, C.brick2, m.type === 'heavy' ? 12 : 6);
+          this.shockwaves.push({ x: m.x, y: m.y, r: 0, maxR: 30, life: 1, color: C.accent });
+
+          // Chain tracking
+          this.chainCount++;
+          this.chainTimer = 30;
+          if (this.chainCount >= 2) {
+            this.floatingText.push({ text: 'CHAIN x' + this.chainCount, x: m.x, y: m.y - 20, life: 1, color: C.brick2 });
+            this.score += this.chainCount * 10 * this.level;
+          }
+
           if (Math.random() < 0.12) this.spawnPowerup(m.x, m.y);
           updateHud(this.score, this.lives, this.level, 'Playing');
           return false;
@@ -860,6 +1199,8 @@ class MissileCommand {
       }
       return true;
     });
+    // Add MIRV children
+    this.missiles.push(...newMissiles);
 
     // Update player shots
     this.shots = this.shots.filter(s => {
@@ -869,6 +1210,7 @@ class MissileCommand {
       const dx = s.x - s.tx, dy = s.y - s.ty;
       if (dx * dx + dy * dy < 100 || s.y < 0) {
         this.spawnExplosion(s.x, s.y, s.maxR || 35, C.accent);
+        this.shockwaves.push({ x: s.x, y: s.y, r: 0, maxR: (s.maxR || 35) * 1.3, life: 1, color: C.accent });
         return false;
       }
       return true;
@@ -879,6 +1221,12 @@ class MissileCommand {
       if (ex.growing) { ex.r += 1.5; if (ex.r >= ex.maxR) ex.growing = false; }
       else { ex.r -= 0.8; }
       return ex.r > 0;
+    });
+
+    // Update shockwaves
+    this.shockwaves = this.shockwaves.filter(sw => {
+      sw.r += 2; sw.life -= 0.04;
+      return sw.life > 0 && sw.r < sw.maxR * 2;
     });
 
     // Update power-up crates (fall slowly)
@@ -896,13 +1244,18 @@ class MissileCommand {
 
     // Level up: all missiles cleared and none on screen
     if (this.missiles.length === 0 && this.shots.length === 0 && this.explosions.length === 0 && this.spawnTimer > rate / 2) {
-      const totalSpawned = this.level * 8 + 5;
       if (this.score >= this.level * 200) {
         this.level++;
-        this.ammo = Math.min(this.ammo + 10, 20);
+        this.ammo = Math.min(this.ammo + 10, 25);
         // Revive one city per level
         const dead = this.cities.filter(c => !c.alive);
         if (dead.length > 0) { dead[0].alive = true; this.lives++; }
+        // Bonus wave every 3 levels
+        if (this.level % 3 === 0) {
+          this.bonusWave = true;
+          this.bonusWaveTimer = 300; // ~5 seconds
+          this.floatingText.push({ text: 'BONUS WAVE! 2x POINTS', x: W / 2, y: H / 2, life: 1.5, color: C.accent });
+        }
         updateHud(this.score, this.lives, this.level, 'Level ' + this.level + '!');
       }
     }
@@ -917,6 +1270,7 @@ class MissileCommand {
     let status = 'Ammo: ' + this.ammo;
     if (this.megaBomb) status += '  [MEGA]';
     if (this.slowMo) status += '  [SLOW]';
+    if (this.bonusWave) status += '  [2x BONUS]';
     updateHud(this.score, this.lives, this.level, status);
   }
 
@@ -1002,16 +1356,39 @@ class MissileCommand {
     ctx.moveTo(mouseX, mouseY - 10); ctx.lineTo(mouseX, mouseY + 10);
     ctx.stroke();
 
+    // Bonus wave indicator
+    if (this.bonusWave) {
+      ctx.globalAlpha = 0.4 + Math.sin(Date.now() / 150) * 0.2;
+      ctx.fillStyle = C.accent;
+      ctx.font = '700 11px "JetBrains Mono"'; ctx.textAlign = 'center';
+      ctx.fillText('BONUS WAVE - 2x POINTS', W / 2, 18);
+      ctx.textAlign = 'left';
+      ctx.globalAlpha = 1;
+    }
+
     // Incoming missile trails
     this.missiles.forEach(m => {
+      const isHeavy = m.type === 'heavy';
+      const isMirv = m.type === 'mirv';
       if (m.trail.length > 1) {
-        ctx.strokeStyle = 'rgba(248,81,73,0.5)'; ctx.lineWidth = 1.5;
+        ctx.strokeStyle = isHeavy ? 'rgba(248,81,73,0.7)' : isMirv ? 'rgba(88,166,255,0.5)' : 'rgba(248,81,73,0.5)';
+        ctx.lineWidth = isHeavy ? 2.5 : 1.5;
         ctx.beginPath(); ctx.moveTo(m.trail[0].x, m.trail[0].y);
         m.trail.forEach(p => ctx.lineTo(p.x, p.y));
         ctx.lineTo(m.x, m.y); ctx.stroke();
       }
-      ctx.fillStyle = C.red;
-      ctx.beginPath(); ctx.arc(m.x, m.y, 2.5, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = isMirv ? C.cyan : C.red;
+      ctx.beginPath(); ctx.arc(m.x, m.y, m.radius, 0, Math.PI * 2); ctx.fill();
+      // Heavy glow
+      if (isHeavy) {
+        ctx.fillStyle = 'rgba(248,81,73,0.2)';
+        ctx.beginPath(); ctx.arc(m.x, m.y, m.radius * 3, 0, Math.PI * 2); ctx.fill();
+      }
+      // MIRV indicator
+      if (isMirv && !m.split) {
+        ctx.strokeStyle = C.cyan; ctx.lineWidth = 0.8;
+        ctx.beginPath(); ctx.arc(m.x, m.y, 6, 0, Math.PI * 2); ctx.stroke();
+      }
     });
 
     // Player shot trails
@@ -1033,7 +1410,30 @@ class MissileCommand {
       ctx.beginPath(); ctx.arc(ex.x, ex.y, ex.r, 0, Math.PI * 2); ctx.fill();
       ctx.strokeStyle = ex.color; ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.arc(ex.x, ex.y, ex.r, 0, Math.PI * 2); ctx.stroke();
+      // Outer ring
+      ctx.globalAlpha = alpha * 0.3;
+      ctx.strokeStyle = ex.color; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(ex.x, ex.y, ex.r * 1.4, 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = 1;
     });
+
+    // Shockwaves
+    this.shockwaves.forEach(sw => {
+      ctx.globalAlpha = sw.life * 0.5;
+      ctx.strokeStyle = sw.color; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(sw.x, sw.y, sw.r, 0, Math.PI * 2); ctx.stroke();
+      // Radial lines
+      ctx.lineWidth = 1;
+      for (let i = 0; i < 6; i++) {
+        const angle = (i / 6) * Math.PI * 2;
+        const innerR = sw.r * 0.3;
+        ctx.beginPath();
+        ctx.moveTo(sw.x + Math.cos(angle) * innerR, sw.y + Math.sin(angle) * innerR);
+        ctx.lineTo(sw.x + Math.cos(angle) * sw.r, sw.y + Math.sin(angle) * sw.r);
+        ctx.stroke();
+      }
+    });
+    ctx.globalAlpha = 1;
 
     // Particles
     this.particles.forEach(p => {
