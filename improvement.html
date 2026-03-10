@@ -41,7 +41,7 @@
   .matrix-labels-x{display:flex;justify-content:center;padding-top:0.3rem;}
   .matrix-labels-x .axis-label{font-family:'JetBrains Mono',monospace;font-size:0.6rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;}
 
-  .matrix{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:2px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;min-height:420px;margin-left:1rem;}
+  .matrix{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:2px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;min-height:420px;margin-left:1rem;transition:all 0.25s ease;}
 
   .quadrant{padding:0.8rem;display:flex;flex-direction:column;gap:0.4rem;min-height:200px;position:relative;}
   .quadrant .q-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3rem;}
@@ -127,6 +127,48 @@
   .config-banner input{width:100%;margin-top:0.4rem;padding:0.45rem 0.6rem;font-family:'JetBrains Mono',monospace;font-size:0.75rem;background:var(--bg-input);border:1px solid var(--border);border-radius:6px;color:var(--text);outline:none;}
   .config-banner button{margin-top:0.4rem;padding:0.35rem 0.8rem;background:var(--accent);color:#000;border:none;border-radius:6px;font-weight:600;font-size:0.75rem;cursor:pointer;}
 
+  /* ── COMPACT CHIP CARDS (zoomed-out) ── */
+  .chip-card{
+    display:inline-flex;align-items:center;gap:0.3rem;
+    background:var(--bg-card);border:1px solid var(--border);border-radius:4px;
+    padding:0.2rem 0.45rem;cursor:pointer;transition:all 0.12s;
+    max-width:100%;overflow:hidden;white-space:nowrap;
+  }
+  .chip-card:hover{border-color:var(--accent);background:var(--bg-hover);}
+  .chip-card .chip-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
+  .chip-card .chip-label{font-size:0.65rem;font-weight:500;color:var(--text);overflow:hidden;text-overflow:ellipsis;}
+  .chip-dot.dot-safety{background:#f85149;}
+  .chip-dot.dot-quality{background:#58a6ff;}
+  .chip-dot.dot-efficiency{background:#3fb950;}
+  .chip-dot.dot-cost{background:#d29922;}
+  .chip-dot.dot-general{background:#8b949e;}
+
+  /* ── +N MORE BADGE ── */
+  .more-badge{
+    display:inline-flex;align-items:center;gap:0.25rem;
+    font-family:'JetBrains Mono',monospace;font-size:0.65rem;font-weight:600;
+    color:var(--accent);background:var(--accent-glow);border:1px dashed var(--accent);
+    border-radius:4px;padding:0.2rem 0.5rem;cursor:pointer;transition:all 0.15s;
+  }
+  .more-badge:hover{background:rgba(224,149,43,0.22);transform:scale(1.05);}
+
+  /* ── ZOOM STATE ── */
+  .matrix.zoomed{grid-template-columns:1fr;grid-template-rows:1fr;}
+  .matrix.zoomed .quadrant{display:none;}
+  .matrix.zoomed .quadrant.zoom-target{display:flex;min-height:380px;}
+  .matrix.zoomed .quadrant.zoom-target .q-cards{overflow-y:auto;max-height:none;}
+
+  /* Zoom-back button */
+  .zoom-back{
+    display:none;font-family:'JetBrains Mono',monospace;font-size:0.68rem;font-weight:600;
+    color:var(--text-dim);background:var(--bg-input);border:1px solid var(--border);
+    border-radius:var(--radius);padding:0.3rem 0.7rem;cursor:pointer;transition:all 0.15s;
+    align-items:center;gap:0.3rem;
+  }
+  .zoom-back:hover{border-color:var(--accent);color:var(--accent);}
+  .matrix.zoomed+.matrix-labels-x .zoom-back{display:inline-flex;}
+  .matrix:not(.zoomed)+.matrix-labels-x .zoom-back{display:none;}
+
   @media(max-width:700px){
     .matrix{min-height:340px;}
     .idea-card{max-width:100%;}
@@ -171,6 +213,7 @@
     </div>
     <div class="matrix-labels-x">
       <span class="axis-label" style="margin-right:auto;padding-left:1rem;">← Easy</span>
+      <button class="zoom-back" onclick="zoomOut()">← All Quadrants</button>
       <span class="axis-label">Change Effort</span>
       <span class="axis-label" style="margin-left:auto;padding-right:1rem;">Hard →</span>
     </div>
@@ -248,6 +291,8 @@ let SCRIPT_URL=DEFAULT_SCRIPT_URL;
 let IDEAS=[];
 let ratingIdeaId=null;
 let toastTimer=null;
+let zoomedQuadrant=null;
+const MAX_CHIPS=5; // max visible chips per quadrant before showing "+N more"
 
 async function init(){
   if(SCRIPT_URL){document.getElementById('scriptUrl').value=SCRIPT_URL;await loadIdeas();}
@@ -273,19 +318,46 @@ async function loadIdeas(){
 }
 
 function renderIdeas(){
-  ['q-implement','q-challenge','q-possible','q-kill'].forEach(id=>document.getElementById(id).innerHTML='');
+  const qids=['q-implement','q-challenge','q-possible','q-kill'];
+  qids.forEach(id=>document.getElementById(id).innerHTML='');
   const inbox=document.getElementById('inboxCards');
   inbox.innerHTML='';
   let unratedCount=0;
 
+  // Group rated ideas by quadrant
+  const buckets={'q-implement':[],'q-challenge':[],'q-possible':[],'q-kill':[]};
   IDEAS.forEach(idea=>{
-    const card=makeCard(idea);
     if(!idea.value||!idea.effort){
-      inbox.appendChild(card);
+      inbox.appendChild(makeCard(idea,false));
       unratedCount++;
     }else{
-      const qid=getQuadrant(idea.value,idea.effort);
-      document.getElementById(qid).appendChild(card);
+      buckets[getQuadrant(idea.value,idea.effort)].push(idea);
+    }
+  });
+
+  // Render each quadrant
+  const isZoomed=zoomedQuadrant!==null;
+  qids.forEach(qid=>{
+    const container=document.getElementById(qid);
+    const ideas=buckets[qid];
+    const showFull=isZoomed&&zoomedQuadrant===qid;
+    const useChips=!showFull;
+
+    if(useChips){
+      // Compact chip mode
+      const visible=ideas.slice(0,MAX_CHIPS);
+      const overflow=ideas.length-MAX_CHIPS;
+      visible.forEach(idea=>container.appendChild(makeChip(idea)));
+      if(overflow>0){
+        const badge=document.createElement('span');
+        badge.className='more-badge';
+        badge.textContent='+'+overflow+' more';
+        badge.onclick=(e)=>{e.stopPropagation();zoomIn(qid);};
+        container.appendChild(badge);
+      }
+    }else{
+      // Full card mode (zoomed in)
+      ideas.forEach(idea=>container.appendChild(makeCard(idea,false)));
     }
   });
 
@@ -305,6 +377,32 @@ function makeCard(idea){
   const tagClass='tag-'+(idea.category||'general').toLowerCase();
   div.innerHTML='<div class="card-title">'+escHtml(idea.title)+'</div><div class="card-meta"><span class="card-tag '+tagClass+'">'+escHtml(idea.category||'General')+'</span><span class="card-name">'+escHtml(idea.name)+'</span></div>';
   return div;
+}
+
+function makeChip(idea){
+  const chip=document.createElement('div');
+  chip.className='chip-card';
+  chip.onclick=()=>openRateModal(idea);
+  const dotClass='dot-'+(idea.category||'general').toLowerCase();
+  chip.innerHTML='<span class="chip-dot '+dotClass+'"></span><span class="chip-label">'+escHtml(idea.title)+'</span>';
+  return chip;
+}
+
+function zoomIn(qid){
+  zoomedQuadrant=qid;
+  const matrix=document.querySelector('.matrix');
+  matrix.classList.add('zoomed');
+  document.querySelectorAll('.quadrant').forEach(q=>q.classList.remove('zoom-target'));
+  document.getElementById(qid).closest('.quadrant').classList.add('zoom-target');
+  renderIdeas();
+}
+
+function zoomOut(){
+  zoomedQuadrant=null;
+  const matrix=document.querySelector('.matrix');
+  matrix.classList.remove('zoomed');
+  document.querySelectorAll('.quadrant').forEach(q=>q.classList.remove('zoom-target'));
+  renderIdeas();
 }
 
 function getQuadrant(value,effort){
