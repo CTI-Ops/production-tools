@@ -51,6 +51,10 @@ function doPost(e) {
       return handleSubmitIdea(data);
     } else if (data.action === 'rateIdea') {
       return handleRateIdea(data);
+    } else if (data.action === 'editIdea') {
+      return handleEditIdea(data);
+    } else if (data.action === 'deleteIdea') {
+      return handleDeleteIdea(data);
     } else if (data.action === 'high_score') {
       return handleHighScore(data);
     } else if (data.action === 'add_config') {
@@ -392,6 +396,65 @@ function handleRateIdea(data) {
       sheet.getRange(row, 6).setValue(effort);  // F: Effort
       sheet.getRange(row, 7).setValue(ratedBy); // G: Rated By
       return jsonResponse({ success: true, value: value, effort: effort });
+    }
+  }
+
+  return jsonResponse({ success: false, error: 'Idea not found' });
+}
+
+function handleEditIdea(data) {
+  var id = (data.id || '').toString();
+  if (!id) return jsonResponse({ success: false, error: 'Missing idea ID' });
+
+  var title = (data.title || '').trim();
+  if (!title) return jsonResponse({ success: false, error: 'Title is required' });
+
+  var name = (data.name || '').trim();
+  var category = (data.category || 'General').trim();
+  var value = (data.value || '').trim().toLowerCase();
+  var effort = (data.effort || '').trim().toLowerCase();
+  var ratedBy = (data.rated_by || '').trim();
+
+  var sheet = getIdeasSheet_();
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return jsonResponse({ success: false, error: 'Idea not found' });
+
+  var ids = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+  for (var i = 0; i < ids.length; i++) {
+    if (ids[i][0].toString() === id) {
+      var row = i + 2;
+      sheet.getRange(row, 2).setValue(name);      // B: Name
+      sheet.getRange(row, 3).setValue(title);      // C: Title
+      sheet.getRange(row, 4).setValue(category);   // D: Category
+      if (value && ['high', 'low'].indexOf(value) !== -1) {
+        sheet.getRange(row, 5).setValue(value);    // E: Value
+      }
+      if (effort && ['high', 'low'].indexOf(effort) !== -1) {
+        sheet.getRange(row, 6).setValue(effort);   // F: Effort
+      }
+      if (ratedBy) {
+        sheet.getRange(row, 7).setValue(ratedBy);  // G: Rated By
+      }
+      return jsonResponse({ success: true, id: id, title: title, name: name, category: category, value: value, effort: effort });
+    }
+  }
+
+  return jsonResponse({ success: false, error: 'Idea not found' });
+}
+
+function handleDeleteIdea(data) {
+  var id = (data.id || '').toString();
+  if (!id) return jsonResponse({ success: false, error: 'Missing idea ID' });
+
+  var sheet = getIdeasSheet_();
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return jsonResponse({ success: false, error: 'Idea not found' });
+
+  var ids = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+  for (var i = 0; i < ids.length; i++) {
+    if (ids[i][0].toString() === id) {
+      sheet.deleteRow(i + 2);
+      return jsonResponse({ success: true, id: id });
     }
   }
 
