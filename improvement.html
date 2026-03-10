@@ -137,7 +137,7 @@
 </header>
 
 <main>
-  <div class="config-banner visible" id="configBanner">
+  <div class="config-banner" id="configBanner">
     <p>Paste your Google Apps Script Web App URL to connect.</p>
     <input type="text" id="scriptUrl" placeholder="https://script.google.com/macros/s/.../exec">
     <button onclick="saveUrl()">Connect</button>
@@ -284,7 +284,12 @@ function renderIdeas(){
   });
 
   document.getElementById('inboxCount').textContent=unratedCount;
-  document.getElementById('inboxEmpty').style.display=unratedCount>0?'none':'block';
+  if(unratedCount===0){
+    const empty=document.createElement('span');
+    empty.className='inbox-empty';
+    empty.textContent='No unrated ideas. Click "+ New Idea" to submit one.';
+    inbox.appendChild(empty);
+  }
 }
 
 function makeCard(idea){
