@@ -595,13 +595,8 @@ async function submitEdit(){
       const idea=IDEAS.find(i=>i.id==ratingIdeaId);
       if(idea){idea.title=title;idea.category=category;idea.name=name;if(valueSel)idea.value=valueSel.dataset.val;if(effortSel)idea.effort=effortSel.dataset.val;if(ratedBy)idea.rated_by=ratedBy;}
       renderIdeas();showToast('ok','Idea updated!');closeRateModal();
-    }else{showToast('err',result.error);}
-  }catch(e){
-    // Fallback: update locally if backend doesn't support editIdea yet
-    const idea=IDEAS.find(i=>i.id==ratingIdeaId);
-    if(idea){idea.title=title;idea.category=category;idea.name=name;if(valueSel)idea.value=valueSel.dataset.val;if(effortSel)idea.effort=effortSel.dataset.val;if(ratedBy)idea.rated_by=ratedBy;}
-    renderIdeas();showToast('ok','Idea updated locally.');closeRateModal();
-  }
+    }else{showToast('err',result.error||'Failed to save');}
+  }catch(e){showToast('err','Connection error');}
   finally{btn.classList.remove('loading');}
 }
 
@@ -615,12 +610,8 @@ async function deleteIdea(){
     if(result.success){
       IDEAS=IDEAS.filter(i=>i.id!=ratingIdeaId);
       renderIdeas();showToast('ok','Idea deleted.');closeRateModal();
-    }else{showToast('err',result.error);}
-  }catch(e){
-    // Fallback: remove locally
-    IDEAS=IDEAS.filter(i=>i.id!=ratingIdeaId);
-    renderIdeas();showToast('ok','Idea removed locally.');closeRateModal();
-  }
+    }else{showToast('err',result.error||'Failed to delete');}
+  }catch(e){showToast('err','Connection error');}
   finally{btn.textContent='Delete';}
 }
 
