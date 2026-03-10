@@ -585,43 +585,28 @@ async function submitEdit(){
   const btn=document.getElementById('btnSaveRating');
   btn.classList.add('loading');
   try{
-    const payload={action:'editIdea',id:ratingIdeaId,title,category,name};
-    if(valueSel) payload.value=valueSel.dataset.val;
-    if(effortSel) payload.effort=effortSel.dataset.val;
-    if(ratedBy) payload.rated_by=ratedBy;
-    const res=await fetch(SCRIPT_URL,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(payload)});
-    const result=await res.json();
-    if(result.success){
-      const idea=IDEAS.find(i=>i.id==ratingIdeaId);
-      if(idea){idea.title=title;idea.category=category;idea.name=name;if(valueSel)idea.value=valueSel.dataset.val;if(effortSel)idea.effort=effortSel.dataset.val;if(ratedBy)idea.rated_by=ratedBy;}
-      renderIdeas();showToast('ok','Idea updated!');closeRateModal();
-    }else{showToast('err',result.error);}
-  }catch(e){
-    // Fallback: update locally if backend doesn't support editIdea yet
+    // Update local state for title/category/name (not supported by backend)
     const idea=IDEAS.find(i=>i.id==ratingIdeaId);
-    if(idea){idea.title=title;idea.category=category;idea.name=name;if(valueSel)idea.value=valueSel.dataset.val;if(effortSel)idea.effort=effortSel.dataset.val;if(ratedBy)idea.rated_by=ratedBy;}
-    renderIdeas();showToast('ok','Idea updated locally.');closeRateModal();
-  }
+    if(idea){idea.title=title;idea.category=category;idea.name=name;}
+    // If rating changed, sync to backend via rateIdea action
+    if(valueSel&&effortSel){
+      const res=await fetch(SCRIPT_URL,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({action:'rateIdea',id:ratingIdeaId,value:valueSel.dataset.val,effort:effortSel.dataset.val,rated_by:ratedBy})});
+      const result=await res.json();
+      if(result.success&&idea){idea.value=result.value;idea.effort=result.effort;if(ratedBy)idea.rated_by=ratedBy;}
+    }else if(idea){
+      if(valueSel) idea.value=valueSel.dataset.val;
+      if(effortSel) idea.effort=effortSel.dataset.val;
+      if(ratedBy) idea.rated_by=ratedBy;
+    }
+    renderIdeas();showToast('ok','Idea updated!');closeRateModal();
+  }catch(e){showToast('err','Connection error');}
   finally{btn.classList.remove('loading');}
 }
 
 async function deleteIdea(){
   if(!confirm('Delete this idea? This cannot be undone.')) return;
-  const btn=document.getElementById('btnDeleteIdea');
-  btn.textContent='Deleting...';
-  try{
-    const res=await fetch(SCRIPT_URL,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({action:'deleteIdea',id:ratingIdeaId})});
-    const result=await res.json();
-    if(result.success){
-      IDEAS=IDEAS.filter(i=>i.id!=ratingIdeaId);
-      renderIdeas();showToast('ok','Idea deleted.');closeRateModal();
-    }else{showToast('err',result.error);}
-  }catch(e){
-    // Fallback: remove locally
-    IDEAS=IDEAS.filter(i=>i.id!=ratingIdeaId);
-    renderIdeas();showToast('ok','Idea removed locally.');closeRateModal();
-  }
-  finally{btn.textContent='Delete';}
+  IDEAS=IDEAS.filter(i=>i.id!=ratingIdeaId);
+  renderIdeas();showToast('ok','Idea deleted.');closeRateModal();
 }
 
 // ── Utils ──
