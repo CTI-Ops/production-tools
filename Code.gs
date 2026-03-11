@@ -620,6 +620,14 @@ function handleBugReport(data) {
   return jsonResponse({ success: true });
 }
 
+function testBugReport() {
+  handleBugReport({
+    page: 'Test',
+    description: 'Testing bug report',
+    steps: ''
+  });
+}
+
 function jsonResponse(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
